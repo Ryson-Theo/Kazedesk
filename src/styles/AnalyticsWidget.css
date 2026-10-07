@@ -1,0 +1,234 @@
+.analytics-card {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  color: #eef4f8;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+.analytics-header,
+.analytics-title,
+.analytics-toolbar,
+.analytics-chart-heading {
+  display: flex;
+  align-items: center;
+}
+
+.analytics-header {
+  flex: 0 0 auto;
+  justify-content: space-between;
+}
+
+.analytics-title {
+  gap: 8px;
+  color: #9fe5d1;
+}
+
+.analytics-title h2 {
+  margin: 0;
+  color: #f6f8fa;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.analytics-minimize-button {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: #c4d0da;
+  cursor: pointer;
+}
+
+.analytics-toolbar {
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.analytics-period-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.analytics-period-switch button {
+  min-width: 38px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #92a0ae;
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.analytics-period-switch button.active {
+  background: rgba(92, 205, 174, 0.18);
+  color: #aaf0db;
+}
+
+.analytics-date-control input {
+  width: 130px;
+  max-width: 138px;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #dce5ec;
+  color-scheme: dark;
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.analytics-date-control input[type="number"] {
+  width: 76px;
+}
+
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.analytics-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.analytics-stat span {
+  overflow: hidden;
+  color: #8795a3;
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-stat strong {
+  overflow: hidden;
+  color: #edf3f6;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-stat.focus strong { color: #9fe5d1; }
+.analytics-stat.sessions strong { color: #a7c7e7; }
+.analytics-stat.break strong { color: #ffc58b; }
+.analytics-stat.tasks strong { color: #9ccaff; }
+.analytics-stat.notes strong { color: #e9b1dc; }
+
+.analytics-chart-heading {
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.analytics-chart-heading > span {
+  color: #b7c4cf;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.analytics-chart-heading select {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: #141b24;
+  color: #cbd5df;
+  font: inherit;
+  font-size: 0.65rem;
+}
+
+.analytics-chart-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 100px;
+}
+
+.analytics-empty-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #778593;
+  font-size: 0.7rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.analytics-tooltip {
+  display: flex;
+  min-width: 130px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #141b24;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.analytics-tooltip span {
+  color: #8795a3;
+  font-size: 0.64rem;
+}
+
+.analytics-tooltip strong {
+  color: #dce5ec;
+  font-size: 0.7rem;
+}
+
+.analytics-tooltip b {
+  color: #9fe5d1;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-period-caption {
+  flex: 0 0 auto;
+  color: #768493;
+  font-size: 0.62rem;
+  text-align: right;
+}
+
+.analytics-minimized-button {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9fe5d1;
+  cursor: pointer;
+}
+
+.analytics-minimized-button:hover {
+  color: #d0fff1;
+}

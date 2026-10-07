@@ -1,0 +1,415 @@
+/* Dashboard canvas and primary layout. */
+
+.dashboard {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+.dashboardOverlay {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  z-index: 0;
+}
+
+/* Sidebar navigation and controls. */
+
+.sidebar {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  bottom: 28px;
+  width: 58px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 16px 8px;
+  z-index: 100;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar:hover {
+  width: 185px;
+}
+
+.logo {
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 24px;
+  text-align: center;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebarButton {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #d6d6d6;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebarIcon {
+  flex-shrink: 0;
+}
+
+.sidebarButton span {
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.sidebar:hover .sidebarButton span {
+  opacity: 1;
+}
+
+.sidebarButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* Main workspace and dashboard cards. */
+
+.workspace {
+  position: relative;
+  z-index: 5;
+  height: 100vh;
+  padding: 20px 20px 42px 90px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.widget {
+  position: absolute;
+  background: transparent;
+  border: none;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.26);
+  padding: 16px;
+  overflow: hidden;
+  transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+  cursor: grab;
+}
+
+.widget:hover {
+  transform: translateY(-2px);
+}
+
+.widget .widget-handle,
+.widget .widget-resize-handle {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.widget:hover .widget-handle,
+.widget:hover .widget-resize-handle,
+.widget:focus-within .widget-handle,
+.widget:focus-within .widget-resize-handle {
+  opacity: 1;
+}
+
+.widget:active {
+  cursor: grabbing;
+}
+
+.widget.glass {
+  background: rgba(15, 23, 31, 0.68);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+.widget.transparent {
+  background: rgba(15, 23, 31, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.widget.outline {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
+.widget.glass:hover,
+.widget.transparent:hover,
+.widget.outline:hover {
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
+}
+
+.widget.rounded {
+  border-radius: 24px;
+}
+
+.widget.rectangle {
+  border-radius: 10px;
+}
+
+.widget-handle {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(226, 232, 240, 0.6);
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.widget-resize-handle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 16px;
+  height: 16px;
+  border-right: 2px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+  cursor: nwse-resize;
+}
+
+.widget.notes-widget-minimized {
+  padding: 8px;
+}
+
+.widget.notes-widget-minimized .widget-handle,
+.widget.notes-widget-minimized .widget-resize-handle {
+  display: none;
+}
+
+.widget.task-widget-minimized {
+  padding: 8px;
+}
+
+.widget.task-widget-minimized .widget-handle,
+.widget.task-widget-minimized .widget-resize-handle {
+  display: none;
+}
+
+.widget.youtube-widget-minimized {
+  padding: 8px;
+}
+
+.widget.youtube-widget-minimized .widget-handle,
+.widget.youtube-widget-minimized .widget-resize-handle {
+  display: none;
+}
+
+.widget.analytics-widget-minimized {
+  padding: 8px;
+}
+
+.widget.analytics-widget-minimized .widget-handle,
+.widget.analytics-widget-minimized .widget-resize-handle {
+  display: none;
+}
+
+.widget.minimized-widget-idle-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ambient-strip-idle-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none !important;
+}
+
+/* Floating entry point for dashboard settings. */
+
+.floatingSettingsWrapper {
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  z-index: 120;
+}
+
+/* Ambient audio visualizer placement and visibility. */
+
+.bottomAmbient {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  height: 11px;
+  z-index: 999;
+  pointer-events: none;
+}
+
+.dashboard-attribution {
+  position: fixed;
+  right: 20px;
+  bottom: 8px;
+  z-index: 1000;
+  pointer-events: auto;
+  text-align: right;
+  color: rgba(248, 250, 252, 0.75);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.dashboard-attribution a {
+  color: rgba(248, 250, 252, 0.9);
+  text-decoration: none;
+}
+
+.dashboard-attribution a:hover {
+  text-decoration: underline;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 1200px) {
+  .workspace {
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 50px;
+    top: 12px;
+    left: 12px;
+    bottom: 12px;
+  }
+
+  .sidebar:hover {
+    width: 50px;
+  }
+
+  .sidebarButton span {
+    display: none;
+  }
+
+  .workspace {
+    padding: 80px 16px 30px 72px;
+  }
+
+  .widget {
+    padding: 14px;
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 960px) {
+  .dashboard {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 14px;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 72px 14px 100px;
+    overflow: visible;
+  }
+
+  .widget {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    min-width: 0;
+    height: auto !important;
+    margin: 0;
+    padding: 14px;
+    cursor: default;
+    transform: none !important;
+  }
+
+  .widget:hover {
+    transform: none !important;
+  }
+
+  .widget .widget-handle,
+  .widget .widget-resize-handle {
+    display: none !important;
+  }
+
+  .widget[data-widget-id="timer"] { min-height: 250px; }
+  .widget[data-widget-id="weather"] { min-height: 170px; }
+  .widget[data-widget-id="tasks"] { min-height: 250px; }
+  .widget[data-widget-id="youtube"] { min-height: 230px; }
+  .widget[data-widget-id="analytics"] { min-height: 300px; }
+  .widget[data-widget-id="notes"] { min-height: 250px; }
+
+  .floatingSettingsWrapper {
+    top: 12px;
+    right: 12px;
+  }
+
+  .dashboard-attribution {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    padding: 0 14px 18px;
+    text-align: center;
+  }
+
+  .digital-pet-anchor {
+    position: fixed;
+    top: auto !important;
+    right: 14px;
+    bottom: 88px;
+    left: auto !important;
+    z-index: 1001;
+    transform: none;
+  }
+}
