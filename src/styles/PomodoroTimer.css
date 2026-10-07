@@ -1,0 +1,348 @@
+/* Timer card layout and shared sizing. */
+.pomo-outer-card {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: #f8fafc;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* Timer header and view controls. */
+.pomo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.pomo-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pomo-badge-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.pomo-badge-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.pomo-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pomo-mode-switch {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.pomo-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pomo-toggle-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #38bdf8;
+}
+
+.pomo-icon-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Inline duration settings. */
+.pomo-settings-panel {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.pomo-presets {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.pomo-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 0.65rem;
+}
+
+.pomo-chip {
+  flex: 1;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pomo-chip.active {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+.pomo-input {
+  width: 50px;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #f8fafc;
+  font-size: 0.7rem;
+}
+
+/* Main timer display area. */
+.pomo-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 0;
+  overflow: visible;
+  margin-top: 10px;
+}
+
+.pomo-circle-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+
+.pomo-dial-wrapper {
+  position: relative;
+  height: 96%;
+  max-height: 96%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pomo-svg {
+  position: absolute;
+  inset: -4%;
+  width: 108%;
+  height: 108%;
+}
+
+.pomo-track-circle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 4;
+}
+
+.pomo-progress-circle {
+  fill: none;
+  stroke: url(#pomoGrad);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 0.8s linear;
+}
+
+.pomo-dial-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Horizontal timeline layout. */
+.pomo-timeline-stage {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
+}
+
+.pomo-timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.pomo-timeline-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.pomo-timeline-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pomo-timeline-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #6366f1);
+  border-radius: 999px;
+  transition: width 0.8s linear;
+}
+
+.pomo-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: #64748b;
+}
+
+/* Timer labels and numerical readouts. */
+.pomo-status-tag {
+  font-size: clamp(0.55rem, 3cqw, 0.65rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.pomo-percentage-tag {
+  font-size: clamp(0.6rem, 3.5cqw, 0.75rem);
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.pomo-time-display {
+  display: flex;
+  align-items: center;
+  font-size: clamp(1.8rem, 15cqw, 3.2rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.view-circle .pomo-time-display {
+  width: 5ch;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pomo-time-display.large {
+  font-size: clamp(2.2rem, 18cqw, 3.8rem);
+  justify-content: center;
+}
+
+.pomo-colon {
+  color: #f8fafc;
+  margin: 0 -1px;
+}
+
+/* Timer actions and status controls. */
+.pomo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.pomo-btn-main {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: #38bdf8;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.pomo-btn-main:hover {
+  transform: scale(1.05);
+}
+
+.pomo-btn-main.pause {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.pomo-btn-sub {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.play-offset {
+  transform: translateX(1px);
+}
