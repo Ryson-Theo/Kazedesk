@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, GripVertical, Italic, Trash2, Plus, X, Maximize2, Minimize2, StickyNote, Undo2 } from 'lucide-react';
+import { Bold, GripVertical, Italic, Trash2, Plus, X, Maximize2, Minimize2, StickyNote, Undo2, Folder, FolderPlus, ListFilter, ListTodo } from 'lucide-react';
 import { storageManager } from '../utils/localStorage';
+import SelectDropdown from './SelectDropdown';
 import '../styles/NotesCard.css';
 
 const COLOR_PALETTE = {
@@ -12,6 +13,7 @@ const COLOR_PALETTE = {
   purple: { bg: '#e9d5ff' },
   orange: { bg: '#fed7aa' },
 };
+const FOLDER_COLORS = ['#a5b4fc', '#67e8f9', '#86efac', '#f9a8d4', '#fcd34d', '#c4b5fd'];
 
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -58,6 +60,10 @@ function getNoteTitle(note) {
   return note.title?.trim() || note.text?.split(/\r?\n/).find((line) => line.trim())?.trim() || 'Untitled note';
 }
 
+function parseTags(value) {
+  return [...new Set(value.split(',').map((tag) => tag.trim()).filter(Boolean))];
+}
+
 function getCreatedAt(note) {
   const createdAt = Date.parse(note.createdAt || '');
   return Number.isFinite(createdAt) ? createdAt : Number(note.id) || 0;
@@ -79,17 +85,25 @@ function NoteFormatToolbar({ editorRef, label }) {
 
 export default function NotesCard({ minimized = false, onToggleMinimize }) {
   const [notes, setNotes] = useState(() => storageManager.getStickyNotes() || []);
+  const [categories, setCategories] = useState(() => storageManager.getNoteCategories());
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
+  const [newNoteTags, setNewNoteTags] = useState('');
   const [noteColor, setNoteColor] = useState('yellow');
+  const [newNoteCategory, setNewNoteCategory] = useState('Inbox');
   const [showInput, setShowInput] = useState(false);
   const [sortOrder, setSortOrder] = useState('newest');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
 
   // Track the note currently open in the full editor.
   const [activeNote, setActiveNote] = useState(null);
   const [activeTitle, setActiveTitle] = useState('');
   const [activeColor, setActiveColor] = useState('yellow');
+  const [activeCategory, setActiveCategory] = useState('Inbox');
+  const [activeTags, setActiveTags] = useState('');
 
   // Keep the delete confirmation visible while undo remains available.
   const [toast, setToast] = useState(null);
@@ -127,6 +141,8 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
       text,
       body,
       color: noteColor,
+      category: newNoteCategory,
+      tags: parseTags(newNoteTags),
       createdAt: new Date().toISOString(),
     };
 
@@ -137,7 +153,9 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
 
     setNewNoteTitle('');
     setNewNoteText('');
+    setNewNoteTags('');
     setNoteColor('yellow');
+    setNewNoteCategory(selectedCategory === 'all' ? 'Inbox' : selectedCategory);
     setShowInput(false);
     if (newNoteEditorRef.current) newNoteEditorRef.current.innerHTML = '';
   };
@@ -146,7 +164,9 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
     setShowInput(false);
     setNewNoteTitle('');
     setNewNoteText('');
+    setNewNoteTags('');
     setNoteColor('yellow');
+    setNewNoteCategory(selectedCategory === 'all' ? 'Inbox' : selectedCategory);
     if (newNoteEditorRef.current) newNoteEditorRef.current.innerHTML = '';
   };
 
@@ -194,6 +214,8 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
     setActiveNote(note);
     setActiveTitle(getNoteTitle(note));
     setActiveColor(note.color || 'yellow');
+    setActiveCategory(note.category || 'Inbox');
+    setActiveTags((note.tags || []).join(', '));
   };
 
   const saveAndCloseModal = () => {
@@ -209,7 +231,7 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
 
     const updated = notes.map((note) =>
       note.id === activeNote.id
-        ? { ...note, title: title || 'Untitled note', text, body, color: activeColor }
+        ? { ...note, title: title || 'Untitled note', text, body, color: activeColor, category: activeCategory, tags: parseTags(activeTags) }
         : note
     );
 
@@ -241,7 +263,35 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
 
   const sortedNotes = sortOrder === 'newest'
     ? [...notes].sort((left, right) => getCreatedAt(right) - getCreatedAt(left))
-    : notes;
+    : sortOrder === 'alphabetical'
+      ? [...notes].sort((left, right) => getNoteTitle(left).localeCompare(getNoteTitle(right)))
+      : notes;
+  const visibleNotes = sortedNotes.filter((note) => selectedCategory === 'all' || (note.category || 'Inbox') === selectedCategory);
+
+  const handleAddCategory = () => {
+    const category = newCategoryName.trim();
+    if (!category || categories.some((existing) => existing.toLowerCase() === category.toLowerCase())) return;
+    const updated = [...categories, category];
+    setCategories(updated);
+    storageManager.saveNoteCategories(updated);
+    setNewCategoryName('');
+    setSelectedCategory(category);
+    setNewNoteCategory(category);
+    setIsAddingCategory(false);
+  };
+
+  const handleDeleteCategory = (category) => {
+    if (category === 'Inbox' || !window.confirm(`Delete the "${category}" notes folder? Notes will be moved to Inbox.`)) return;
+    const updatedCategories = categories.filter((item) => item !== category);
+    const updatedNotes = notes.map((note) => (note.category || 'Inbox') === category ? { ...note, category: 'Inbox' } : note);
+    setCategories(updatedCategories);
+    setNotes(updatedNotes);
+    storageManager.saveNoteCategories(updatedCategories);
+    storageManager.saveStickyNotes(updatedNotes);
+    if (selectedCategory === category) setSelectedCategory('Inbox');
+    if (newNoteCategory === category) setNewNoteCategory('Inbox');
+    if (activeCategory === category) setActiveCategory('Inbox');
+  };
 
   const handleModalColorChange = (colorKey) => {
     setActiveColor(colorKey);
@@ -278,9 +328,13 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
         </div>
         <div className="notes-header-actions">
           <button
-            onClick={() => setShowInput((prev) => !prev)}
+            onClick={() => {
+              setNewNoteCategory(selectedCategory === 'all' ? 'Inbox' : selectedCategory);
+              setShowInput((prev) => !prev);
+            }}
             className={`notes-add-btn ${showInput ? 'active' : ''}`}
             title={showInput ? 'Close' : 'Add Note'}
+            aria-label={showInput ? 'Close new note' : 'Add new note'}
             aria-expanded={showInput}
           >
             <Plus size={16} />
@@ -299,25 +353,102 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
 
       {/* Compact previews for saved notes. */}
       <div className="notes-list">
-        {notes.length === 0 ? (
-          <div className="notes-empty">
-            <p>No notes yet</p>
-            <span>Click "+" to add one</span>
-          </div>
-        ) : (
           <>
+          <div className="notes-folder-bar">
+            <div className="notes-folder-controls">
+              <div className="notes-folder-current" aria-label="Selected notes folder">
+                {selectedCategory === 'all' ? (
+                  <ListTodo size={15} aria-hidden="true" />
+                ) : (
+                  <Folder size={15} aria-hidden="true" style={{ color: FOLDER_COLORS[Math.max(0, categories.indexOf(selectedCategory)) % FOLDER_COLORS.length] }} />
+                )}
+                <span>{selectedCategory === 'all' ? 'All notes' : selectedCategory}</span>
+                <span className="notes-folder-count">
+                  {selectedCategory === 'all' ? notes.length : notes.filter((note) => (note.category || 'Inbox') === selectedCategory).length}
+                </span>
+              </div>
+              <SelectDropdown
+                label="Sort notes"
+                value={sortOrder}
+                options={[
+                  { value: 'newest', label: 'Newest first' },
+                  { value: 'alphabetical', label: 'Alphabetical' },
+                  { value: 'custom', label: 'Custom order' },
+                ]}
+                onChange={setSortOrder}
+                icon={ListFilter}
+                iconOnly
+                className="ui-select--icon"
+              />
+              <button
+                type="button"
+                className="notes-folder-new-button"
+                onClick={() => setIsAddingCategory((adding) => !adding)}
+                aria-expanded={isAddingCategory}
+              >
+                {isAddingCategory ? <X size={14} /> : <Plus size={14} />}
+                <span>{isAddingCategory ? 'Cancel' : 'New folder'}</span>
+              </button>
+            </div>
+            <div className="notes-folder-choices" aria-label="Notes folders">
+              {selectedCategory !== 'all' && (
+                <button type="button" className="notes-folder-chip" onClick={() => setSelectedCategory('all')}>
+                  <ListTodo size={13} />
+                  <span>All notes</span>
+                  <span className="notes-folder-count">{notes.length}</span>
+                </button>
+              )}
+              {categories.filter((category) => category !== selectedCategory).map((category) => {
+                const folderIndex = categories.indexOf(category);
+                return (
+                  <div key={category} className="notes-folder-item">
+                    <button type="button" className="notes-folder-chip" onClick={() => setSelectedCategory(category)}>
+                      <Folder size={13} style={{ color: FOLDER_COLORS[Math.max(0, folderIndex) % FOLDER_COLORS.length] }} />
+                      <span>{category}</span>
+                      <span className="notes-folder-count">{notes.filter((note) => (note.category || 'Inbox') === category).length}</span>
+                    </button>
+                    {category !== 'Inbox' && (
+                      <button
+                        type="button"
+                        className="notes-folder-delete"
+                        aria-label={`Delete ${category} folder`}
+                        title={`Delete ${category} folder`}
+                        onClick={() => handleDeleteCategory(category)}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {isAddingCategory && (
+              <form className="notes-add-folder" onSubmit={(event) => { event.preventDefault(); handleAddCategory(); }}>
+                <FolderPlus size={14} aria-hidden="true" />
+                <input
+                  aria-label="New notes folder name"
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="Folder name"
+                  maxLength={32}
+                  autoFocus
+                />
+                <button type="submit" aria-label="Create notes folder" title="Create folder"><Plus size={15} /></button>
+              </form>
+            )}
+          </div>
           <div className="notes-list-toolbar">
-            <label className="notes-sort-control">
-              <span>Sort</span>
-              <select aria-label="Sort notes" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
-                <option value="newest">Newest first</option>
-                <option value="custom">Custom order</option>
-              </select>
-            </label>
             {sortOrder === 'custom' && <span className="notes-arrange-hint">Drag to arrange</span>}
           </div>
-          {sortedNotes.map((note) => {
-            const theme = COLOR_PALETTE[note.color] || COLOR_PALETTE.yellow;
+          {visibleNotes.length === 0 ? (
+            <div className="notes-empty notes-folder-empty">
+              <p>{notes.length === 0 ? 'No notes yet' : `No notes in ${selectedCategory === 'all' ? 'this view' : selectedCategory}.`}</p>
+              <span>{notes.length === 0 ? 'Click "+" to add one' : 'Add a note to this folder or choose another folder.'}</span>
+            </div>
+          ) : visibleNotes.map((note) => {
+            const theme = COLOR_PALETTE[note.color] || {
+              bg: /^#[\da-f]{6}$/i.test(note.color || '') ? note.color : COLOR_PALETTE.yellow.bg,
+            };
 
             return (
               <div
@@ -338,6 +469,12 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
                 />
 
                 <p className="note-preview-text">{getNoteTitle(note)}</p>
+                {note.tags?.length > 0 && (
+                  <span className="note-preview-tags" aria-label={`Tags: ${note.tags.join(', ')}`}>
+                    {note.tags.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}
+                    {note.tags.length > 2 && <span>+{note.tags.length - 2}</span>}
+                  </span>
+                )}
 
                 <div className="note-row-actions">
                   <button
@@ -362,7 +499,6 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
             );
           })}
           </>
-        )}
       </div>
 
       {showInput && createPortal((
@@ -393,7 +529,18 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
               </button>
             </div>
             <div className="note-modal-body hide-scrollbar">
+              <div className="note-category-picker">
+                <Folder size={14} aria-hidden="true" />
+                <SelectDropdown
+                  label="New note folder"
+                  value={newNoteCategory}
+                  options={categories.map((category) => ({ value: category, label: category }))}
+                  onChange={setNewNoteCategory}
+                  className="ui-select--folder"
+                />
+              </div>
               <input className="note-modal-title" value={newNoteTitle} onChange={(event) => setNewNoteTitle(event.target.value)} aria-label="Note title" placeholder="Note title" />
+              <input className="note-modal-tags" value={newNoteTags} onChange={(event) => setNewNoteTags(event.target.value)} aria-label="Note tags" placeholder="Tags (comma separated)" />
               <div
                 ref={newNoteEditorRef}
                 contentEditable
@@ -437,6 +584,14 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
                     title={colorKey}
                   />
                 ))}
+                {activeColor.startsWith('#') && (
+                  <input
+                    type="color"
+                    aria-label="Custom note color"
+                    value={activeColor}
+                    onChange={(event) => handleModalColorChange(event.target.value)}
+                  />
+                )}
               </div>
               <NoteFormatToolbar editorRef={modalEditorRef} label="Note" />
               <button className="modal-close-btn" onClick={saveAndCloseModal} aria-label="Close note">
@@ -445,7 +600,18 @@ export default function NotesCard({ minimized = false, onToggleMinimize }) {
             </div>
 
             <div className="note-modal-body hide-scrollbar">
+              <div className="note-category-picker">
+                <Folder size={14} aria-hidden="true" />
+                <SelectDropdown
+                  label="Note folder"
+                  value={activeCategory}
+                  options={categories.map((category) => ({ value: category, label: category }))}
+                  onChange={setActiveCategory}
+                  className="ui-select--folder"
+                />
+              </div>
               <input className="note-modal-title" value={activeTitle} onChange={(event) => setActiveTitle(event.target.value)} aria-label="Note title" placeholder="Note title" />
+              <input className="note-modal-tags" value={activeTags} onChange={(event) => setActiveTags(event.target.value)} aria-label="Note tags" placeholder="Tags (comma separated)" />
               <div ref={modalEditorRef} contentEditable suppressContentEditableWarning role="textbox" aria-label="Note text" aria-multiline="true" onMouseDown={(event) => event.stopPropagation()} className="modal-direct-textarea note-modal-editor hide-scrollbar" data-placeholder="Type your note here..." />
             </div>
 

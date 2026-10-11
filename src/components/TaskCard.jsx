@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, BellRing, CheckSquare, ChevronDown, ChevronUp, Clock, GripVertical, Minimize2, SlidersHorizontal } from 'lucide-react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Trash2, Plus, BellRing, CheckSquare, Clock, GripVertical, Minimize2, Repeat2, Folder, FolderPlus, ListFilter, ListTodo, X, MoreHorizontal, ChevronRight, ChevronDown } from 'lucide-react';
+import SelectDropdown from './SelectDropdown';
 import { storageManager } from '../utils/localStorage';
 import '../styles/TaskCard.css';
 
@@ -8,6 +10,8 @@ const PRIORITIES = {
   medium: { label: 'Medium', marker: '🟠', rank: 1 },
   low: { label: 'Low', marker: '🟢', rank: 2 },
 };
+
+const FOLDER_COLORS = ['#a5b4fc', '#67e8f9', '#86efac', '#f9a8d4', '#fcd34d', '#c4b5fd'];
 
 function makeReminderDate(hour, minute, period) {
   const date = new Date();
@@ -50,17 +54,28 @@ function TaskReminderPicker({ value, onChange, label = 'Reminder time' }) {
   return (
     <div className="task-time-picker" aria-label={label}>
       <Clock size={13} className="time-icon" />
-      <select aria-label={`${label} hour`} value={parts.hour} onChange={(event) => updatePart('hour', event.target.value)}>
-        {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((hour) => <option key={hour} value={hour}>{hour}</option>)}
-      </select>
+      <SelectDropdown
+        label={`${label} hour`}
+        value={parts.hour}
+        options={Array.from({ length: 12 }, (_, index) => String(index + 1)).map((hour) => ({ value: hour, label: hour }))}
+        onChange={(hour) => updatePart('hour', hour)}
+        className="ui-select--compact"
+      />
       <span>:</span>
-      <select aria-label={`${label} minute`} value={parts.minute} onChange={(event) => updatePart('minute', event.target.value)}>
-        {Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0')).map((minute) => <option key={minute} value={minute}>{minute}</option>)}
-      </select>
-      <select aria-label={`${label} AM or PM`} value={parts.period} onChange={(event) => updatePart('period', event.target.value)}>
-        <option value="AM">AM</option>
-        <option value="PM">PM</option>
-      </select>
+      <SelectDropdown
+        label={`${label} minute`}
+        value={parts.minute}
+        options={Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0')).map((minute) => ({ value: minute, label: minute }))}
+        onChange={(minute) => updatePart('minute', minute)}
+        className="ui-select--compact"
+      />
+      <SelectDropdown
+        label={`${label} AM or PM`}
+        value={parts.period}
+        options={['AM', 'PM'].map((period) => ({ value: period, label: period }))}
+        onChange={(period) => updatePart('period', period)}
+        className="ui-select--compact"
+      />
       <button type="button" className="task-clear-reminder" aria-label="Clear reminder" title="Clear reminder" onClick={() => onChange(null)}>×</button>
     </div>
   );
@@ -76,16 +91,162 @@ function formatReminderTime(value) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
+function getNextDailyReminder(value, now = new Date()) {
+  const reminder = new Date(value);
+  const next = new Date(now);
+  next.setHours(reminder.getHours(), reminder.getMinutes(), 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next.toISOString();
+}
+
+function isSameLocalDay(left, right) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function TaskCategoryPicker({ value, categories, label, onChange }) {
+  return (
+    <SelectDropdown
+      label={label}
+      value={value}
+      options={(categories.includes(value) ? categories : [value, ...categories]).map((category) => ({ value: category, label: category }))}
+      onChange={onChange}
+      icon={Folder}
+      className="ui-select--folder"
+    />
+  );
+}
+
+function TaskActionsMenu({ task, onToggleRepeat, onEdit, onDelete }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!menuRef.current?.contains(event.target) && !triggerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuPosition(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (!trigger || !menu) return;
+
+      const triggerBounds = trigger.getBoundingClientRect();
+      const menuBounds = menu.getBoundingClientRect();
+      const margin = 8;
+      const gap = 5;
+      const left = Math.max(margin, Math.min(
+        triggerBounds.right - menuBounds.width,
+        window.innerWidth - menuBounds.width - margin,
+      ));
+      const below = triggerBounds.bottom + gap;
+      const top = below + menuBounds.height <= window.innerHeight - margin
+        ? below
+        : Math.max(margin, triggerBounds.top - menuBounds.height - gap);
+      setMenuPosition({ left, top });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen]);
+
+  const runAction = (action) => {
+    action();
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="task-actions-menu" onMouseDown={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="task-actions-trigger"
+        aria-label={`More options for ${task.title}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        title="More options"
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <MoreHorizontal size={17} />
+      </button>
+      {isOpen && createPortal(
+        <div
+          className="task-actions-popover"
+          ref={menuRef}
+          role="menu"
+          aria-label={`Actions for ${task.title}`}
+          style={menuPosition ? { left: `${menuPosition.left}px`, top: `${menuPosition.top}px` } : { visibility: 'hidden' }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button type="button" role="menuitem" onClick={() => runAction(onToggleRepeat)}>
+            <Repeat2 size={14} />
+            <span>{task.repeatDaily ? 'Stop daily repeat' : 'Repeat daily'}</span>
+            {task.repeatDaily && <CheckSquare size={13} className="task-action-selected" />}
+          </button>
+          <button type="button" role="menuitem" onClick={() => runAction(onEdit)}>
+            <ListFilter size={14} />
+            <span>{task.editing ? 'Close task options' : 'Edit task'}</span>
+          </button>
+          <div className="task-actions-divider" />
+          <button type="button" role="menuitem" className="is-danger" onClick={() => runAction(onDelete)}>
+            <Trash2 size={14} />
+            <span>Delete task</span>
+          </button>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 export default function TaskCard({ minimized = false, onToggleMinimize }) {
   const [tasks, setTasks] = useState(() => storageManager.getTasks() || []);
+  const [categories, setCategories] = useState(() => storageManager.getTaskCategories());
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskReminder, setNewTaskReminder] = useState(null);
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
+  const [newTaskCategory, setNewTaskCategory] = useState('Inbox');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [sortOrder, setSortOrder] = useState('newest');
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [editingTaskId, setEditingTaskId] = useState(null);
+  const [completedTasksOpen, setCompletedTasksOpen] = useState(false);
+  const [completingTaskIds, setCompletingTaskIds] = useState([]);
+  const completionTimersRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
+
+  useEffect(() => () => {
+    completionTimersRef.current.forEach((timer) => clearTimeout(timer));
+    completionTimersRef.current.clear();
+  }, []);
 
   const getNotificationAudioContext = () => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -142,22 +303,40 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
   useEffect(() => {
     const checkReminders = () => {
       const now = new Date();
+      const dueTasks = [];
+      let changed = false;
+      const updatedTasks = tasks.map((task) => {
+        let updated = task;
+        if (task.repeatDaily && task.completed && task.completedAt) {
+          const completedDate = new Date(task.completedAt);
+          if (!Number.isNaN(completedDate.getTime()) && !isSameLocalDay(completedDate, now)) {
+            updated = { ...updated, completed: false, completedAt: null };
+            changed = true;
+          }
+        }
 
-      const dueTasks = tasks.filter((task) =>
-        !task.completed && task.reminder && !task.notified && now >= new Date(task.reminder)
-      );
-      if (dueTasks.length === 0) return;
+        const reminderDate = updated.reminder ? new Date(updated.reminder) : null;
+        const reminderIsDue = reminderDate && !Number.isNaN(reminderDate.getTime()) && now >= reminderDate;
+        if (!updated.completed && reminderIsDue && (updated.repeatDaily || !updated.notified)) {
+          dueTasks.push(updated);
+          updated = updated.repeatDaily
+            ? { ...updated, reminder: getNextDailyReminder(updated.reminder, now), notified: false }
+            : { ...updated, notified: true };
+          changed = true;
+        }
+        return updated;
+      });
 
-      dueTasks.forEach(() => { void playNotificationSound(); });
-      window.dispatchEvent(new CustomEvent('task-reminder-due', {
-        detail: { tasks: dueTasks.map((task) => ({ id: task.id, title: task.title })) },
-      }));
-      const dueTaskIds = new Set(dueTasks.map((task) => task.id));
-      const updatedTasks = tasks.map((task) =>
-        dueTaskIds.has(task.id) ? { ...task, notified: true } : task
-      );
-      setTasks(updatedTasks);
-      storageManager.saveTasks(updatedTasks);
+      if (dueTasks.length > 0) {
+        dueTasks.forEach(() => { void playNotificationSound(); });
+        window.dispatchEvent(new CustomEvent('task-reminder-due', {
+          detail: { tasks: dueTasks.map((task) => ({ id: task.id, title: task.title })) },
+        }));
+      }
+      if (changed) {
+        setTasks(updatedTasks);
+        storageManager.saveTasks(updatedTasks);
+      }
     };
 
     checkReminders();
@@ -176,6 +355,7 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
       completed: false,
       notified: false,
       priority: newTaskPriority,
+      category: newTaskCategory,
       createdAt: new Date().toISOString(),
     };
 
@@ -186,11 +366,11 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
     setNewTaskTitle('');
     setNewTaskReminder(null);
     setNewTaskPriority('medium');
+    setNewTaskCategory(selectedCategory === 'all' ? 'Inbox' : selectedCategory);
     setIsAddingTask(false);
   };
 
-  const handleDeleteTask = (e, id) => {
-    e.stopPropagation();
+  const handleDeleteTask = (id) => {
     const updated = tasks.filter((task) => task.id !== id);
     setTasks(updated);
     storageManager.deleteTask(id);
@@ -198,19 +378,28 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
 
   const handleToggleTask = (e, id) => {
     e.stopPropagation();
-    const updated = tasks.map((t) => {
-      if (t.id === id) {
-        const nextState = !t.completed;
-        const updates = { completed: nextState };
-        storageManager.updateTask(id, updates);
-        if (nextState) {
-          storageManager.recordAnalyticsEvent({ type: 'task_completed' });
-          window.dispatchEvent(new CustomEvent('task-completed', { detail: { title: t.title } }));
-        }
-        return { ...t, completed: nextState };
-      }
-      return t;
-    });
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    const nextState = !task.completed;
+    const updates = { completed: nextState, completedAt: nextState ? new Date().toISOString() : null };
+    const updated = tasks.map((item) => item.id === id ? { ...item, ...updates } : item);
+    storageManager.updateTask(id, updates);
+    if (nextState) {
+      setCompletingTaskIds((current) => [...new Set([...current, id])]);
+      const existingTimer = completionTimersRef.current.get(id);
+      if (existingTimer) clearTimeout(existingTimer);
+      completionTimersRef.current.set(id, setTimeout(() => {
+        setCompletingTaskIds((current) => current.filter((taskId) => taskId !== id));
+        completionTimersRef.current.delete(id);
+      }, 420));
+      storageManager.recordAnalyticsEvent({ type: 'task_completed' });
+      window.dispatchEvent(new CustomEvent('task-completed', { detail: { title: task.title } }));
+    } else {
+      const existingTimer = completionTimersRef.current.get(id);
+      if (existingTimer) clearTimeout(existingTimer);
+      completionTimersRef.current.delete(id);
+      setCompletingTaskIds((current) => current.filter((taskId) => taskId !== id));
+    }
     setTasks(updated);
   };
 
@@ -232,6 +421,50 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
     const updated = tasks.map((task) => task.id === taskId ? { ...task, priority } : task);
     setTasks(updated);
     storageManager.updateTask(taskId, { priority });
+  };
+
+  const handleTaskCategoryChange = (taskId, category) => {
+    const updated = tasks.map((task) => task.id === taskId ? { ...task, category } : task);
+    setTasks(updated);
+    storageManager.updateTask(taskId, { category });
+  };
+
+  const handleToggleDailyRepeat = (task) => {
+    const repeatDaily = !task.repeatDaily;
+    const updates = {
+      repeatDaily,
+      reminder: repeatDaily ? (task.reminder || getNextReminderDate()) : task.reminder,
+      notified: false,
+    };
+    const updated = tasks.map((current) => current.id === task.id ? { ...current, ...updates } : current);
+    setTasks(updated);
+    storageManager.updateTask(task.id, updates);
+  };
+
+  const handleAddCategory = () => {
+    const category = newCategoryName.trim();
+    if (!category || categories.some((existing) => existing.toLocaleLowerCase() === category.toLocaleLowerCase())) return;
+    const updated = [...categories, category];
+    setCategories(updated);
+    storageManager.saveTaskCategories(updated);
+    setNewCategoryName('');
+    setSelectedCategory(category);
+    setNewTaskCategory(category);
+    setIsAddingCategory(false);
+  };
+
+  const handleDeleteCategory = (category) => {
+    if (!window.confirm(`Delete the "${category}" folder? Tasks in it will be moved to Inbox.`)) return;
+    const updatedCategories = categories.filter((existing) => existing !== category);
+    const updatedTasks = tasks.map((task) => (task.category || 'Inbox') === category
+      ? { ...task, category: 'Inbox' }
+      : task);
+    setCategories(updatedCategories);
+    setTasks(updatedTasks);
+    storageManager.saveTaskCategories(updatedCategories);
+    storageManager.saveTasks(updatedTasks);
+    if (selectedCategory === category) setSelectedCategory('Inbox');
+    if (newTaskCategory === category) setNewTaskCategory('Inbox');
   };
 
   const reorderTasks = (targetId) => {
@@ -256,10 +489,80 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
     });
   };
 
-  const sortedTasks = [
-    ...sortTaskGroup(tasks.filter((task) => !task.completed)),
-    ...sortTaskGroup(tasks.filter((task) => task.completed)),
-  ];
+  const categoryTasks = tasks.filter((task) => selectedCategory === 'all' || (task.category || 'Inbox') === selectedCategory);
+  const activeTasks = sortTaskGroup(categoryTasks.filter((task) => !task.completed || completingTaskIds.includes(task.id)));
+  const completedTasks = sortTaskGroup(categoryTasks.filter((task) => task.completed && !completingTaskIds.includes(task.id)));
+  const hasVisibleTasks = activeTasks.length > 0 || completedTasks.length > 0;
+
+  const renderTask = (task, isCompleted = false) => (
+    <div
+      key={task.id}
+      className={`task-item ${isCompleted ? 'is-completed' : ''} ${completingTaskIds.includes(task.id) ? 'is-completing' : ''} ${sortOrder === 'custom' ? 'is-arrangeable' : ''} ${draggedTaskId === task.id ? 'is-dragging' : ''}`}
+      draggable={sortOrder === 'custom' && !isCompleted}
+      onMouseDown={(event) => event.stopPropagation()}
+      onDragStart={() => setDraggedTaskId(task.id)}
+      onDragOver={(event) => { if (sortOrder === 'custom' && !isCompleted) event.preventDefault(); }}
+      onDrop={(event) => { event.preventDefault(); if (!isCompleted) reorderTasks(task.id); }}
+      onDragEnd={() => setDraggedTaskId(null)}
+    >
+      {sortOrder === 'custom' && !isCompleted && <GripVertical className="task-drag-handle" size={14} />}
+      <input
+        type="checkbox"
+        checked={task.completed}
+        onChange={(event) => handleToggleTask(event, task.id)}
+        className="task-checkbox"
+        aria-label={`${task.completed ? 'Mark incomplete' : 'Complete'} ${task.title}`}
+      />
+
+      <div className="task-item-main">
+        <div className="task-item-primary">
+          <input
+            className={`task-item-title-input ${task.completed ? 'completed' : ''}`}
+            value={task.title}
+            onChange={(event) => handleTaskTitleChange(task.id, event.target.value)}
+            placeholder="Task title..."
+          />
+          <span className={`task-priority-summary priority-${task.priority || 'medium'}`} title={`${PRIORITIES[task.priority]?.label || 'Medium'} priority`} aria-label={`${PRIORITIES[task.priority]?.label || 'Medium'} priority`}>
+            {PRIORITIES[task.priority]?.marker || PRIORITIES.medium.marker}
+          </span>
+          <span className={`task-reminder-summary ${task.notified ? 'is-notified' : ''}`} title={formatReminderTime(task.reminder)}>
+            {task.reminder && task.notified ? <BellRing size={13} /> : <Clock size={13} />}
+            {task.reminder && <span>{formatReminderTime(task.reminder)}</span>}
+          </span>
+          <TaskActionsMenu
+            task={{ ...task, editing: editingTaskId === task.id }}
+            onToggleRepeat={() => handleToggleDailyRepeat(task)}
+            onEdit={() => setEditingTaskId((currentId) => currentId === task.id ? null : task.id)}
+            onDelete={() => handleDeleteTask(task.id)}
+          />
+        </div>
+        {editingTaskId === task.id && (
+          <div className="task-item-edit-panel">
+            <label className={`task-priority-tag priority-${task.priority || 'medium'}`}>
+              <span>{PRIORITIES[task.priority]?.marker || PRIORITIES.medium.marker}</span>
+              <SelectDropdown
+                label={`Priority for ${task.title}`}
+                value={task.priority || 'medium'}
+                options={Object.entries(PRIORITIES).map(([value, priority]) => ({ value, label: priority.label }))}
+                onChange={(priority) => handleTaskPriorityChange(task.id, priority)}
+                className="ui-select--compact ui-select--priority"
+              />
+            </label>
+            <TaskCategoryPicker
+              label={`Category for ${task.title}`}
+              value={task.category || 'Inbox'}
+              categories={categories}
+              onChange={(category) => handleTaskCategoryChange(task.id, category)}
+            />
+            <div className="task-time-badge">
+              {task.reminder && <BellRing size={12} className={task.notified ? 'bell-ringing' : ''} />}
+              <TaskReminderPicker value={task.reminder} onChange={(value) => handleTaskTimeChange(task.id, value)} label={`Reminder for ${task.title}`} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   if (minimized) {
     return (
@@ -280,12 +583,17 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
       <header className="task-header">
         <div className="task-header-title">
           <h2>Today's Tasks</h2>
-          <span className="task-badge">{tasks.filter((t) => !t.completed).length} active</span>
+          <span className="task-badge" aria-label={`${tasks.filter((t) => !t.completed).length} active tasks`}>
+            <span className="task-badge-count">{tasks.filter((t) => !t.completed).length}</span>
+            <span className="task-badge-label">active</span>
+          </span>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddingTask(!isAddingTask)}
           className={`task-add-btn ${isAddingTask ? 'active' : ''}`}
           aria-label="Add new task"
+          title="New Task"
         >
           <Plus size={16} />
           <span>New Task</span>
@@ -315,11 +623,21 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
             <div className="task-add-options">
               <label className={`task-priority-tag priority-${newTaskPriority}`}>
                 <span>{PRIORITIES[newTaskPriority].marker}</span>
-                <select aria-label="New task priority" value={newTaskPriority} onChange={(event) => setNewTaskPriority(event.target.value)}>
-                  {Object.entries(PRIORITIES).map(([value, priority]) => <option key={value} value={value}>{priority.label}</option>)}
-                </select>
+                <SelectDropdown
+                  label="New task priority"
+                  value={newTaskPriority}
+                  options={Object.entries(PRIORITIES).map(([value, priority]) => ({ value, label: priority.label }))}
+                  onChange={setNewTaskPriority}
+                  className="ui-select--compact ui-select--priority"
+                />
               </label>
               <TaskReminderPicker value={newTaskReminder} onChange={setNewTaskReminder} label="New task reminder" />
+              <TaskCategoryPicker
+                label="New task category"
+                value={newTaskCategory}
+                categories={categories}
+                onChange={setNewTaskCategory}
+              />
             </div>
             <div className="task-add-actions">
               <button onClick={handleAddTask} className="task-submit-btn">
@@ -334,97 +652,125 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
       )}
 
       <div className="task-list">
-        {tasks.length === 0 ? (
+        <div className="task-folder-bar">
+          <div className="task-folder-controls">
+            <div className="task-folder-current" aria-label="Selected task folder">
+              {selectedCategory === 'all' ? (
+                <ListTodo size={15} aria-hidden="true" />
+              ) : (
+                <Folder size={15} aria-hidden="true" style={{ color: FOLDER_COLORS[Math.max(0, categories.indexOf(selectedCategory)) % FOLDER_COLORS.length] }} />
+              )}
+              <span>{selectedCategory === 'all' ? 'All tasks' : selectedCategory}</span>
+              <span className="task-folder-count">
+                {selectedCategory === 'all'
+                  ? tasks.length
+                  : tasks.filter((task) => (task.category || 'Inbox') === selectedCategory).length}
+              </span>
+            </div>
+            <SelectDropdown
+              label="Sort tasks"
+              value={sortOrder}
+              options={[
+                { value: 'newest', label: 'Newest first' },
+                { value: 'priority', label: 'Priority' },
+                { value: 'alphabetical', label: 'Alphabetical' },
+                { value: 'custom', label: 'Custom order' },
+              ]}
+              onChange={setSortOrder}
+              icon={ListFilter}
+              iconOnly
+              className="ui-select--icon"
+            />
+            <button
+              type="button"
+              className="task-folder-new-button"
+              onClick={() => setIsAddingCategory((adding) => !adding)}
+              aria-expanded={isAddingCategory}
+            >
+              {isAddingCategory ? <X size={14} /> : <Plus size={14} />}
+              <span>{isAddingCategory ? 'Cancel' : 'New folder'}</span>
+            </button>
+          </div>
+          <div className="task-folder-choices" aria-label="Task folders">
+            {selectedCategory !== 'all' && (
+              <button type="button" className="task-folder-chip" onClick={() => setSelectedCategory('all')}>
+              <ListTodo size={13} />
+              <span>All tasks</span>
+              <span className="task-folder-count">{tasks.length}</span>
+              </button>
+            )}
+            {categories.filter((category) => category !== selectedCategory).map((category) => {
+              const folderIndex = categories.indexOf(category);
+              return (
+                <div key={category} className="task-folder-item">
+                  <button type="button" className="task-folder-chip" onClick={() => setSelectedCategory(category)}>
+                    <Folder size={13} style={{ color: FOLDER_COLORS[Math.max(0, folderIndex) % FOLDER_COLORS.length] }} />
+                    <span>{category}</span>
+                    <span className="task-folder-count">{tasks.filter((task) => (task.category || 'Inbox') === category).length}</span>
+                  </button>
+                  {category !== 'Inbox' && (
+                    <button
+                      type="button"
+                      className="task-folder-delete"
+                      aria-label={`Delete ${category} folder`}
+                      title={`Delete ${category} folder`}
+                      onClick={() => handleDeleteCategory(category)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {isAddingCategory && (
+            <form className="task-add-folder" onSubmit={(event) => { event.preventDefault(); handleAddCategory(); }}>
+              <FolderPlus size={14} aria-hidden="true" />
+              <input
+                aria-label="New category name"
+                value={newCategoryName}
+                onChange={(event) => setNewCategoryName(event.target.value)}
+                placeholder="Folder name"
+                maxLength={32}
+                autoFocus
+              />
+              <button type="submit" aria-label="Create category" title="Create category"><Plus size={15} /></button>
+            </form>
+          )}
+        </div>
+        {!hasVisibleTasks ? (
           <div className="task-empty">
             <CheckSquare size={32} className="task-empty-icon" />
-            <p>All caught up for today!</p>
-            <span>Add a task with an optional time reminder.</span>
+            <p>{tasks.length === 0 ? 'All caught up for today!' : `No tasks in ${selectedCategory === 'all' ? 'this view' : selectedCategory}.`}</p>
+            <span>{tasks.length === 0 ? 'Add a task with an optional time reminder.' : 'Choose another folder or add a task here.'}</span>
           </div>
         ) : (
           <>
-            <div className="task-list-toolbar">
-              <label className="task-sort-control">
-                <span>Sort</span>
-                <select aria-label="Sort tasks" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
-                  <option value="newest">Newest first</option>
-                  <option value="priority">Priority</option>
-                  <option value="alphabetical">Alphabetical</option>
-                  <option value="custom">Custom order</option>
-                </select>
-              </label>
-              {sortOrder === 'custom' && <span className="task-arrange-hint">Drag to arrange</span>}
-            </div>
-            {sortedTasks.map((task) => (
-            <div
-              key={task.id}
-              className={`task-item ${task.completed ? 'is-completed' : ''} ${sortOrder === 'custom' ? 'is-arrangeable' : ''} ${draggedTaskId === task.id ? 'is-dragging' : ''}`}
-              draggable={sortOrder === 'custom'}
-              onMouseDown={(event) => event.stopPropagation()}
-              onDragStart={() => setDraggedTaskId(task.id)}
-              onDragOver={(event) => { if (sortOrder === 'custom') event.preventDefault(); }}
-              onDrop={(event) => { event.preventDefault(); reorderTasks(task.id); }}
-              onDragEnd={() => setDraggedTaskId(null)}
-            >
-              {sortOrder === 'custom' && <GripVertical className="task-drag-handle" size={14} />}
-              <input
-                type="checkbox"
-                checked={task.completed}
-                onChange={(e) => handleToggleTask(e, task.id)}
-                className="task-checkbox"
-              />
-
-              <div className="task-item-main">
-                <div className="task-item-primary">
-                  <input
-                    className={`task-item-title-input ${task.completed ? 'completed' : ''}`}
-                    value={task.title}
-                    onChange={(e) => handleTaskTitleChange(task.id, e.target.value)}
-                    placeholder="Task title..."
-                  />
-                  <span className={`task-priority-summary priority-${task.priority || 'medium'}`} title={`${PRIORITIES[task.priority]?.label || 'Medium'} priority`} aria-label={`${PRIORITIES[task.priority]?.label || 'Medium'} priority`}>
-                    {PRIORITIES[task.priority]?.marker || PRIORITIES.medium.marker}
-                  </span>
-                  <span className={`task-reminder-summary ${task.notified ? 'is-notified' : ''}`} title={formatReminderTime(task.reminder)}>
-                    {task.reminder && task.notified ? <BellRing size={13} /> : <Clock size={13} />}
-                    {task.reminder && <span>{formatReminderTime(task.reminder)}</span>}
-                  </span>
-                  <button
-                    type="button"
-                    className="task-edit-toggle"
-                    aria-label={`${editingTaskId === task.id ? 'Close' : 'Edit'} options for ${task.title}`}
-                    aria-expanded={editingTaskId === task.id}
-                    title="Edit priority and reminder"
-                    onClick={() => setEditingTaskId((currentId) => currentId === task.id ? null : task.id)}
-                  >
-                    <SlidersHorizontal size={14} />
-                    {editingTaskId === task.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                  </button>
-                </div>
-                {editingTaskId === task.id && (
-                  <div className="task-item-edit-panel">
-                    <label className={`task-priority-tag priority-${task.priority || 'medium'}`}>
-                      <span>{PRIORITIES[task.priority]?.marker || PRIORITIES.medium.marker}</span>
-                      <select aria-label={`Priority for ${task.title}`} value={task.priority || 'medium'} onChange={(event) => handleTaskPriorityChange(task.id, event.target.value)}>
-                        {Object.entries(PRIORITIES).map(([value, priority]) => <option key={value} value={value}>{priority.label}</option>)}
-                      </select>
-                    </label>
-                    <div className="task-time-badge">
-                      {task.reminder && <BellRing size={12} className={task.notified ? 'bell-ringing' : ''} />}
-                      <TaskReminderPicker value={task.reminder} onChange={(value) => handleTaskTimeChange(task.id, value)} label={`Reminder for ${task.title}`} />
-                    </div>
+            {sortOrder === 'custom' && activeTasks.length > 0 && (
+              <div className="task-list-toolbar">
+                <span className="task-arrange-hint">Drag to arrange</span>
+              </div>
+            )}
+            {activeTasks.map((task) => renderTask(task))}
+            {completedTasks.length > 0 && (
+              <section className={`task-completed-section ${completedTasksOpen ? 'is-open' : ''}`}>
+                <button
+                  type="button"
+                  className="task-completed-toggle"
+                  aria-expanded={completedTasksOpen}
+                  onClick={() => setCompletedTasksOpen((open) => !open)}
+                >
+                  {completedTasksOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  <span>Completed</span>
+                  <span className="task-completed-count">{completedTasks.length}</span>
+                </button>
+                {completedTasksOpen && (
+                  <div className="task-completed-list">
+                    {completedTasks.map((task) => renderTask(task, true))}
                   </div>
                 )}
-              </div>
-
-              <button
-                onClick={(e) => handleDeleteTask(e, task.id)}
-                className="task-item-delete"
-                title="Delete task"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-            ))}
+              </section>
+            )}
           </>
         )}
       </div>

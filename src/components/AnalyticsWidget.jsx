@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { storageManager } from "../utils/localStorage";
+import SelectDropdown from "./SelectDropdown";
 import "../styles/AnalyticsWidget.css";
 
 const pad = (value) => String(value).padStart(2, "0");
@@ -351,11 +352,14 @@ export default function AnalyticsWidget({ minimized = false, onToggleMinimize })
 
       <div className="analytics-chart-heading">
         <span>{activeMetric.label}</span>
-        <select value={metric} onChange={(event) => setMetric(event.target.value)} aria-label="Chart metric">
-          {Object.entries(METRICS).map(([key, item]) => (
-            <option key={key} value={key}>{item.label}</option>
-          ))}
-        </select>
+        <SelectDropdown
+          value={metric}
+          options={Object.entries(METRICS).map(([key, item]) => ({ value: key, label: item.label }))}
+          onChange={setMetric}
+          label="Chart metric"
+          portal
+          className="ui-select--toolbar"
+        />
       </div>
 
       <div className="analytics-chart-wrap">

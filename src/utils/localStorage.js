@@ -3,7 +3,10 @@ const STORAGE_KEYS = {
   DASHBOARD_CONFIG: 'kazedesk_dashboard_config',
   CARDS_LAYOUT: 'kazedesk_cards_layout',
   STICKY_NOTES: 'kazedesk_sticky_notes',
+  NOTE_CATEGORIES: 'kazedesk_note_categories',
+  NOTE_WALL: 'kazedesk_note_wall',
   TASKS: 'kazedesk_tasks',
+  TASK_CATEGORIES: 'kazedesk_task_categories',
   POMODORO_CONFIG: 'kazedesk_pomodoro_config',
   WEATHER_LOCATION: 'kazedesk_weather_location',
   YOUTUBE_PLAYLISTS: 'kazedesk_youtube_playlists',
@@ -38,6 +41,42 @@ export const storageManager = {
     const saved = localStorage.getItem(STORAGE_KEYS.STICKY_NOTES);
     return saved ? JSON.parse(saved) : [];
   },
+  saveNoteWall: (wall) => {
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL, JSON.stringify(wall));
+  },
+  getNoteWall: () => {
+    const saved = localStorage.getItem(STORAGE_KEYS.NOTE_WALL);
+    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [] };
+    try {
+      const wall = JSON.parse(saved);
+      return {
+        positions: wall?.positions && typeof wall.positions === 'object' ? wall.positions : {},
+        sizes: wall?.sizes && typeof wall.sizes === 'object' ? wall.sizes : {},
+        taskPositions: wall?.taskPositions && typeof wall.taskPositions === 'object' ? wall.taskPositions : {},
+        connections: Array.isArray(wall?.connections) ? wall.connections : [],
+      };
+    } catch {
+      return { positions: {}, sizes: {}, taskPositions: {}, connections: [] };
+    }
+  },
+  saveNoteCategories: (categories) => {
+    const normalized = Array.isArray(categories)
+      ? [...new Set(categories.map((category) => String(category).trim()).filter(Boolean))]
+      : [];
+    localStorage.setItem(STORAGE_KEYS.NOTE_CATEGORIES, JSON.stringify(normalized.includes('Inbox') ? normalized : ['Inbox', ...normalized]));
+  },
+  getNoteCategories: () => {
+    const saved = localStorage.getItem(STORAGE_KEYS.NOTE_CATEGORIES);
+    if (!saved) return ['Inbox'];
+    try {
+      const categories = JSON.parse(saved);
+      if (!Array.isArray(categories)) return ['Inbox'];
+      const normalized = [...new Set(categories.filter((category) => typeof category === 'string').map((category) => category.trim()).filter(Boolean))];
+      return normalized.includes('Inbox') ? normalized : ['Inbox', ...normalized];
+    } catch {
+      return ['Inbox'];
+    }
+  },
   addStickyNote: (note) => {
     const notes = storageManager.getStickyNotes();
     notes.push({ id: Date.now(), ...note });
@@ -64,6 +103,24 @@ export const storageManager = {
   getTasks: () => {
     const saved = localStorage.getItem(STORAGE_KEYS.TASKS);
     return saved ? JSON.parse(saved) : [];
+  },
+  saveTaskCategories: (categories) => {
+    const normalized = Array.isArray(categories)
+      ? [...new Set(categories.map((category) => String(category).trim()).filter(Boolean))]
+      : [];
+    localStorage.setItem(STORAGE_KEYS.TASK_CATEGORIES, JSON.stringify(normalized.includes('Inbox') ? normalized : ['Inbox', ...normalized]));
+  },
+  getTaskCategories: () => {
+    const saved = localStorage.getItem(STORAGE_KEYS.TASK_CATEGORIES);
+    if (!saved) return ['Inbox'];
+    try {
+      const categories = JSON.parse(saved);
+      if (!Array.isArray(categories)) return ['Inbox'];
+      const normalized = [...new Set(categories.filter((category) => typeof category === 'string').map((category) => category.trim()).filter(Boolean))];
+      return normalized.includes('Inbox') ? normalized : ['Inbox', ...normalized];
+    } catch {
+      return ['Inbox'];
+    }
   },
   getAnalyticsEvents: () => {
     try {
@@ -161,12 +218,12 @@ export const storageManager = {
 };
 
 export const getDefaultDashboardConfig = () => ({
-  bgColor: '#0d1117',
+  bgColor: '#0b0e0d',
   backgroundType: 'solid', // Supported background types: solid, gradient, and image.
-  gradientFrom: '#0d1117',
-  gradientTo: '#161b22',
+  gradientFrom: '#0b0e0d',
+  gradientTo: '#111614',
   backgroundImage: null,
-  ambientLightColor: '#8b949e',
+  ambientLightColor: '#b6d2ad',
   ambientLightEnabled: true,
   cardStyle: 'glass', // Supported card styles: glass, transparent, and outline.
   cardBorder: 'rounded', // Supported card shapes: rounded and rectangle.
