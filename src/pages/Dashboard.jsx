@@ -1,4 +1,6 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { Moon, Network, Sun } from "lucide-react";
 
 import AmbientLightStrip from "../components/AmbientLightStrip";
 import DashboardSettings from "../components/DashboardSettings";
@@ -80,6 +82,10 @@ export default function Dashboard() {
     const merged = { ...getDefaultDashboardConfig(), ...saved };
     return legacyBg && !merged.backgroundImage ? { ...merged, backgroundImage: legacyBg } : merged;
   });
+  const [theme, setTheme] = useState(() => localStorage.getItem("kazedesk-landing-theme") === "light" ? "light" : "dark");
+  const [hasVisitedNoteWall, setHasVisitedNoteWall] = useState(
+    () => localStorage.getItem("kazedesk_note_wall_visited") === "true",
+  );
   const [widgetLayout, setWidgetLayout] = useState(() => {
     const saved = storageManager.getCardsLayout();
     return mergeSavedLayout(createDefaultLayout(), saved);
@@ -106,6 +112,23 @@ export default function Dashboard() {
     return () => {
       clearTimeout(idleTimerRef.current);
       window.removeEventListener("mousemove", handlePointerMovement);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncNoteWallVisit = () => {
+      setHasVisitedNoteWall(localStorage.getItem("kazedesk_note_wall_visited") === "true");
+    };
+
+    window.addEventListener("kazedesk-note-wall-visited", syncNoteWallVisit);
+    window.addEventListener("storage", syncNoteWallVisit);
+    window.addEventListener("pageshow", syncNoteWallVisit);
+    window.addEventListener("popstate", syncNoteWallVisit);
+    return () => {
+      window.removeEventListener("kazedesk-note-wall-visited", syncNoteWallVisit);
+      window.removeEventListener("storage", syncNoteWallVisit);
+      window.removeEventListener("pageshow", syncNoteWallVisit);
+      window.removeEventListener("popstate", syncNoteWallVisit);
     };
   }, []);
 
@@ -276,17 +299,34 @@ export default function Dashboard() {
     workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    localStorage.setItem("kazedesk-landing-theme", nextTheme);
+  };
+
+  const isDefaultSolidColor = ["#0d1117", "#161b22", "#0b0e0d", "#f4f5f1"].includes((dashboardConfig.bgColor || "").toLowerCase());
+  const dashboardBackgroundColor = isDefaultSolidColor
+    ? theme === "dark" ? "#0b0e0d" : "#f4f5f1"
+    : dashboardConfig.bgColor || (theme === "dark" ? "#0b0e0d" : "#f4f5f1");
+  const gradientFrom = ["#0d1117", "#0b0e0d", "#f4f5f1"].includes(dashboardConfig.gradientFrom?.toLowerCase())
+    ? theme === "dark" ? "#0b0e0d" : "#f4f5f1"
+    : dashboardConfig.gradientFrom || dashboardBackgroundColor;
+  const gradientTo = ["#161b22", "#111614", "#ecefea"].includes(dashboardConfig.gradientTo?.toLowerCase())
+    ? theme === "dark" ? "#111614" : "#ecefea"
+    : dashboardConfig.gradientTo || (theme === "dark" ? "#111614" : "#ecefea");
+
   return (
     <div
-      className="dashboard"
+      className={`dashboard landing-theme-${theme}`}
       onDrop={handleBackgroundDrop}
       onDragOver={(event) => event.preventDefault()}
       style={{
-        backgroundColor: dashboardConfig.bgColor || "#04070d",
+        backgroundColor: dashboardBackgroundColor,
         backgroundImage: dashboardConfig.backgroundType === 'image' && dashboardConfig.backgroundImage
           ? `url(${dashboardConfig.backgroundImage})`
           : dashboardConfig.backgroundType === 'gradient'
-          ? `linear-gradient(135deg, ${dashboardConfig.gradientFrom || '#0d1117'}, ${dashboardConfig.gradientTo || '#161b22'})`
+          ? `linear-gradient(135deg, ${gradientFrom}, ${gradientTo})`
           : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -427,7 +467,17 @@ export default function Dashboard() {
       </main>
 
       <div className="floatingSettingsWrapper">
-        <DashboardSettings config={dashboardConfig} onConfigChange={handleConfigChange} onResetLayout={handleResetLayout} />
+        <div className="dashboard-control-cluster">
+          <DashboardSettings config={dashboardConfig} onConfigChange={handleConfigChange} onResetLayout={handleResetLayout} />
+          <div className="dashboard-top-actions">
+            {hasVisitedNoteWall && (
+              <Link className="wall-open-link" to="/wall"><Network size={16} /> Note wall</Link>
+            )}
+            <button type="button" className="dashboard-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="bottomAmbient">

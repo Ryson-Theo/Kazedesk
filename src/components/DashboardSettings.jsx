@@ -14,6 +14,7 @@ import {
   UploadCloud
 } from 'lucide-react';
 import { storageManager, getDefaultDashboardConfig } from '../utils/localStorage';
+import SelectDropdown from './SelectDropdown';
 import '../styles/DashboardSettings.css';
 
 const CARD_STYLES = ['glass', 'transparent', 'outline'];
@@ -176,12 +177,14 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
         weatherSettings = null;
       }
       const allData = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         exportedAt: new Date().toISOString(),
         config: legacyBackground && !config.backgroundImage ? { ...config, backgroundImage: legacyBackground } : config,
         cardsLayout: storageManager?.getCardsLayout?.() || {},
         notes: storageManager?.getStickyNotes?.() || [],
+        noteCategories: storageManager?.getNoteCategories?.() || ['Inbox'],
         tasks: storageManager?.getTasks?.() || [],
+        taskCategories: storageManager?.getTaskCategories?.() || ['Inbox'],
         pomodoroConfig: storageManager?.getPomodoroConfig?.() || {},
         youtubePlaylists: storageManager?.getYouTubePlaylists?.() || [],
         currentYouTubePlaylist: storageManager?.getCurrentYouTubePlaylist?.() || '',
@@ -230,8 +233,14 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
         if (Array.isArray(data?.notes)) {
           storageManager?.saveStickyNotes?.(data.notes);
         }
+        if (Array.isArray(data?.noteCategories)) {
+          storageManager?.saveNoteCategories?.(data.noteCategories);
+        }
         if (Array.isArray(data?.tasks)) {
           storageManager?.saveTasks?.(data.tasks);
+        }
+        if (Array.isArray(data?.taskCategories)) {
+          storageManager?.saveTaskCategories?.(data.taskCategories);
         }
         if (data?.cardsLayout && typeof data.cardsLayout === 'object' && !Array.isArray(data.cardsLayout)) {
           storageManager?.saveCardsLayout?.(data.cardsLayout);
@@ -310,7 +319,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
             {/* Dialog title and close control. */}
             <div className="settings-modal-header">
               <div className="settings-header-title">
-                <Settings size={18} className="text-sky-400" />
+                <Settings size={18} />
                 <h2>Dashboard Settings</h2>
               </div>
               <button
@@ -392,10 +401,10 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                         <div className="color-picker-wrapper">
                           <input
                             type="color"
-                            value={localConfig.bgColor || '#0d1117'}
+                            value={localConfig.bgColor || '#0b0e0d'}
                             onChange={(event) => updateConfig({ bgColor: event.target.value })}
                           />
-                          <span className="color-code">{localConfig.bgColor || '#0d1117'}</span>
+                          <span className="color-code">{localConfig.bgColor || '#0b0e0d'}</span>
                         </div>
                       </div>
                     )}
@@ -407,18 +416,18 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                           <div className="color-picker-wrapper">
                             <input
                               type="color"
-                              value={localConfig.gradientFrom || '#0d1117'}
+                              value={localConfig.gradientFrom || '#0b0e0d'}
                               onChange={(event) => updateConfig({ gradientFrom: event.target.value })}
                             />
-                            <span className="color-code">{localConfig.gradientFrom || '#0d1117'}</span>
+                            <span className="color-code">{localConfig.gradientFrom || '#0b0e0d'}</span>
                           </div>
                           <div className="color-picker-wrapper">
                             <input
                               type="color"
-                              value={localConfig.gradientTo || '#161b22'}
+                              value={localConfig.gradientTo || '#111614'}
                               onChange={(event) => updateConfig({ gradientTo: event.target.value })}
                             />
-                            <span className="color-code">{localConfig.gradientTo || '#161b22'}</span>
+                            <span className="color-code">{localConfig.gradientTo || '#111614'}</span>
                           </div>
                         </div>
                       </div>
@@ -450,20 +459,23 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
 
                       <div className="input-group">
                         <label className="settings-sub-label">Timezone</label>
-                        <select
+                        <SelectDropdown
+                          label="Timezone"
                           value={weatherTimezone}
-                          onChange={(event) => setWeatherTimezone(event.target.value)}
-                        >
-                          <option value="Asia/Kolkata">Asia / Kolkata</option>
-                          <option value="Asia/Tokyo">Asia / Tokyo</option>
-                          <option value="Asia/Seoul">Asia / Seoul</option>
-                          <option value="Asia/Singapore">Asia / Singapore</option>
-                          <option value="Europe/London">Europe / London</option>
-                          <option value="Europe/Paris">Europe / Paris</option>
-                          <option value="America/New_York">America / New York</option>
-                          <option value="America/Los_Angeles">America / Los Angeles</option>
-                          <option value="Australia/Sydney">Australia / Sydney</option>
-                        </select>
+                          onChange={setWeatherTimezone}
+                          className="ui-select--full"
+                          options={[
+                            { value: 'Asia/Kolkata', label: 'Asia / Kolkata' },
+                            { value: 'Asia/Tokyo', label: 'Asia / Tokyo' },
+                            { value: 'Asia/Seoul', label: 'Asia / Seoul' },
+                            { value: 'Asia/Singapore', label: 'Asia / Singapore' },
+                            { value: 'Europe/London', label: 'Europe / London' },
+                            { value: 'Europe/Paris', label: 'Europe / Paris' },
+                            { value: 'America/New_York', label: 'America / New York' },
+                            { value: 'America/Los_Angeles', label: 'America / Los Angeles' },
+                            { value: 'Australia/Sydney', label: 'Australia / Sydney' },
+                          ]}
+                        />
                       </div>
 
                       <div className="input-group">
@@ -627,10 +639,10 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                           <div className="color-picker-wrapper">
                             <input
                               type="color"
-                              value={localConfig.ambientLightColor || '#60a5fa'}
+                              value={localConfig.ambientLightColor || '#b6d2ad'}
                               onChange={(event) => updateConfig({ ambientLightColor: event.target.value })}
                             />
-                            <span className="color-code">{localConfig.ambientLightColor || '#60a5fa'}</span>
+                            <span className="color-code">{localConfig.ambientLightColor || '#b6d2ad'}</span>
                           </div>
                         </div>
                       )}

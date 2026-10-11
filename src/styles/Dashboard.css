@@ -1,6 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap');
+
 /* Dashboard canvas and primary layout. */
 
 .dashboard {
+  --lp-bg: #0b0e0d;
+  --lp-surface: #111614;
+  --lp-surface-raised: #171d19;
+  --lp-line: #28302b;
+  --lp-text: #f1f2ec;
+  --lp-muted: #a2aaa2;
+  --lp-soft: #717a72;
+  --dashboard-accent: #b6d2ad;
+  --dashboard-accent-ink: #172016;
+  --dashboard-accent-soft: rgba(182, 210, 173, 0.16);
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -8,8 +20,13 @@
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: "Manrope", "Avenir Next", Inter, system-ui, sans-serif;
   box-sizing: border-box;
+}
+
+.dashboard .task-card {
+  --task-accent: var(--dashboard-accent);
+  --task-accent-hover: var(--dashboard-accent);
 }
 
 *, *::before, *::after {
@@ -23,6 +40,137 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   z-index: 0;
+}
+
+.dashboard-control-cluster {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-top-actions {
+  display: flex;
+  max-width: 0;
+  visibility: hidden;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(10px);
+  transition: max-width 260ms ease, opacity 180ms ease, transform 260ms ease, visibility 260ms;
+}
+
+.dashboard-control-cluster:hover .dashboard-top-actions,
+.dashboard-control-cluster:focus-within .dashboard-top-actions {
+  max-width: 260px;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.dashboard.landing-theme-light {
+  --lp-bg: #f4f5f1;
+  --lp-surface: #ecefea;
+  --lp-surface-raised: #fff;
+  --lp-line: #d9dfd9;
+  --lp-text: #17211c;
+  --lp-muted: #59655e;
+  --lp-soft: #7a857e;
+  --dashboard-accent: #3d694a;
+  --dashboard-accent-ink: #f5f6f0;
+  --dashboard-accent-soft: rgba(61, 105, 74, 0.14);
+  color-scheme: light;
+}
+
+.dashboard.landing-theme-dark {
+  color-scheme: dark;
+}
+
+.dashboard.landing-theme-dark .sidebar {
+  border-color: var(--lp-line);
+  background: rgba(17, 22, 20, 0.78);
+}
+
+.dashboard.landing-theme-dark .wall-open-link,
+.dashboard.landing-theme-dark .dashboard-theme-toggle,
+.dashboard.landing-theme-dark .settings-trigger-btn {
+  border-color: var(--lp-line);
+  background: rgba(17, 22, 20, 0.86);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-dark .settings-trigger-btn:hover {
+  border-color: var(--dashboard-accent);
+  background: var(--lp-surface-raised);
+}
+
+.dashboard.landing-theme-dark .ui-select-trigger:hover,
+.dashboard.landing-theme-dark .ui-select-trigger:focus-visible,
+.dashboard.landing-theme-dark .ui-select-trigger[aria-expanded="true"],
+.dashboard.landing-theme-dark .ui-select-option:hover,
+.dashboard.landing-theme-dark .ui-select-option:focus-visible,
+.dashboard.landing-theme-dark .ui-select-option.is-selected {
+  border-color: var(--dashboard-accent-soft);
+  background: var(--dashboard-accent-soft);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .ui-select-leading-icon,
+.dashboard.landing-theme-dark .ui-select-option > svg,
+.dashboard.landing-theme-dark .ui-select--icon .ui-select-leading-icon {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .ui-select-trigger:hover,
+.dashboard.landing-theme-light .ui-select-trigger:focus-visible,
+.dashboard.landing-theme-light .ui-select-trigger[aria-expanded="true"],
+.dashboard.landing-theme-light .ui-select-option:hover,
+.dashboard.landing-theme-light .ui-select-option:focus-visible,
+.dashboard.landing-theme-light .ui-select-option.is-selected {
+  border-color: rgba(61, 105, 74, 0.25);
+  background: rgba(61, 105, 74, 0.1);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .ui-select-leading-icon,
+.dashboard.landing-theme-light .ui-select-option > svg,
+.dashboard.landing-theme-light .ui-select--icon .ui-select-leading-icon {
+  color: var(--dashboard-accent);
+}
+
+.wall-open-link,
+.dashboard-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.68);
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+
+.wall-open-link {
+  gap: 0.45rem;
+  text-decoration: none;
+}
+
+.dashboard-theme-toggle {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+.wall-open-link:hover,
+.dashboard-theme-toggle:hover {
+  border-color: var(--dashboard-accent, #b6d2ad);
+  background: rgba(182, 210, 173, 0.14);
 }
 
 /* Sidebar navigation and controls. */
@@ -145,7 +293,7 @@
 }
 
 .widget.glass {
-  background: rgba(15, 23, 31, 0.68);
+  background: rgba(17, 22, 20, 0.76);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -153,7 +301,7 @@
 }
 
 .widget.transparent {
-  background: rgba(15, 23, 31, 0.18);
+  background: rgba(17, 22, 20, 0.2);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -174,6 +322,377 @@
 
 .widget.rounded {
   border-radius: 24px;
+}
+
+.dashboard.landing-theme-light .sidebar {
+  border-color: var(--lp-line);
+  background: rgba(236, 239, 234, 0.88);
+}
+
+.dashboard.landing-theme-light .sidebar .logo,
+.dashboard.landing-theme-light .sidebarButton {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .sidebarButton:hover {
+  background: rgba(61, 105, 74, 0.1);
+  color: var(--lp-accent);
+}
+
+.dashboard.landing-theme-light .wall-open-link,
+.dashboard.landing-theme-light .dashboard-theme-toggle {
+  border-color: var(--lp-line);
+  background: rgba(244, 245, 241, 0.9);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .settings-trigger-btn {
+  border-color: var(--lp-line);
+  background: var(--lp-surface-raised);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .widget.glass {
+  background: rgba(236, 239, 234, 0.94);
+  border-color: var(--lp-line);
+  box-shadow: 0 14px 38px rgba(23, 33, 28, 0.12);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-dark .widget.transparent {
+  background: rgba(17, 22, 20, 0.22);
+  border-color: rgba(182, 210, 173, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard.landing-theme-dark .widget.outline {
+  background: rgba(17, 22, 20, 0.06);
+  border-color: rgba(182, 210, 173, 0.28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard.landing-theme-light .widget.transparent {
+  background: rgba(244, 245, 241, 0.2);
+  border-color: rgba(61, 105, 74, 0.22);
+  box-shadow: 0 12px 32px rgba(23, 33, 28, 0.06);
+}
+
+.dashboard.landing-theme-light .widget.outline {
+  background: rgba(244, 245, 241, 0.05);
+  border-color: rgba(61, 105, 74, 0.34);
+  box-shadow: 0 8px 24px rgba(23, 33, 28, 0.04);
+}
+
+.dashboard.landing-theme-dark .widget.outline:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard.landing-theme-dark .widget.transparent:hover {
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard.landing-theme-light .widget.glass:hover,
+.dashboard.landing-theme-light .widget.transparent:hover,
+.dashboard.landing-theme-light .widget.outline:hover {
+  box-shadow: 0 14px 38px rgba(23, 33, 28, 0.14);
+}
+
+.dashboard.landing-theme-light .pomo-time-display,
+.dashboard.landing-theme-light .pomo-colon {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .apple-widget {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .apple-location,
+.dashboard.landing-theme-light .apple-date,
+.dashboard.landing-theme-light .apple-clock,
+.dashboard.landing-theme-light .apple-condition,
+.dashboard.landing-theme-light .apple-humidity,
+.dashboard.landing-theme-light .apple-weather-attribution {
+  color: var(--lp-text);
+  text-shadow: none;
+}
+
+.dashboard.landing-theme-light .widget .pomo-btn-main.play,
+.dashboard.landing-theme-light .widget .pomo-chip.active,
+.dashboard.landing-theme-light .widget .btn-primary {
+  background: var(--dashboard-accent);
+  color: #fff;
+}
+
+.dashboard.landing-theme-light .pomo-btn-main.pause {
+  background: rgba(23, 33, 28, 0.08);
+}
+
+.dashboard.landing-theme-light .widget-handle {
+  color: var(--lp-muted);
+}
+
+.dashboard.landing-theme-light .notes-card-container,
+.dashboard.landing-theme-light .analytics-card,
+.dashboard.landing-theme-light .youtube-card,
+.dashboard.landing-theme-light .pomo-outer-card {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .notes-header h3,
+.dashboard.landing-theme-light .note-preview-text,
+.dashboard.landing-theme-light .task-header h2,
+.dashboard.landing-theme-light .youtube-header h2,
+.dashboard.landing-theme-light .pomo-time-display,
+.dashboard.landing-theme-light .pomo-colon {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .note-item-row:hover,
+.dashboard.landing-theme-light .task-item:hover {
+  background: rgba(61, 105, 74, 0.06);
+}
+
+.dashboard.landing-theme-light .youtube-input {
+  border-color: var(--lp-line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .youtube-button {
+  background: var(--lp-surface-raised);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .pomo-input {
+  border-color: var(--lp-line);
+  background: var(--lp-surface-raised);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .widget-resize-handle {
+  border-color: var(--lp-soft);
+}
+
+.dashboard.landing-theme-light .dashboard-attribution,
+.dashboard.landing-theme-light .dashboard-attribution a {
+  color: var(--lp-muted);
+}
+
+.dashboard.landing-theme-light .task-card {
+  --task-bg-surface: rgba(255, 255, 255, 0.72);
+  --task-bg-panel: rgba(255, 255, 255, 0.86);
+  --task-bg-input: rgba(23, 33, 28, 0.04);
+  --task-border: rgba(23, 33, 28, 0.12);
+  --task-border-hover: rgba(23, 33, 28, 0.22);
+  --task-accent: #3d694a;
+  --task-accent-hover: #31563c;
+  --task-text-main: #17211c;
+  --task-text-muted: #59655e;
+  --task-text-subtle: #7a857e;
+}
+
+.dashboard.landing-theme-light .task-badge {
+  border-color: rgba(61, 105, 74, 0.25);
+  background: rgba(61, 105, 74, 0.1);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .analytics-card {
+  color: #17211c;
+}
+
+.dashboard.landing-theme-light .analytics-title h2 {
+  color: #17211c;
+}
+
+.dashboard.landing-theme-light .analytics-toolbar button,
+.dashboard.landing-theme-light .analytics-date-control input {
+  color: #59655e;
+}
+
+.dashboard.landing-theme-light .analytics-date-control input {
+  border-color: var(--lp-line);
+  background: rgba(255, 255, 255, 0.7);
+  color-scheme: light;
+}
+
+.dashboard.landing-theme-dark .pomo-badge-count,
+.dashboard.landing-theme-dark .pomo-toggle-btn.active,
+.dashboard.landing-theme-dark .pomo-percentage-tag,
+.dashboard.landing-theme-dark .pomo-chip.active,
+.dashboard.landing-theme-dark .notes-folder-current,
+.dashboard.landing-theme-dark .notes-folder-current > svg,
+.dashboard.landing-theme-dark .notes-folder-new-button svg,
+.dashboard.landing-theme-dark .note-category-picker,
+.dashboard.landing-theme-dark .note-preview-tags span,
+.dashboard.landing-theme-dark .note-modal-tags,
+.dashboard.landing-theme-dark .toast-undo-btn,
+.dashboard.landing-theme-dark .task-folder-current,
+.dashboard.landing-theme-dark .task-folder-current > svg,
+.dashboard.landing-theme-dark .task-folder-new-button svg,
+.dashboard.landing-theme-dark .task-add-folder button,
+.dashboard.landing-theme-dark .task-badge,
+.dashboard.landing-theme-dark .youtube-input:focus {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .notes-folder-current,
+.dashboard.landing-theme-dark .notes-folder-new-button:hover,
+.dashboard.landing-theme-dark .notes-folder-chip:hover,
+.dashboard.landing-theme-dark .notes-add-folder button,
+.dashboard.landing-theme-dark .note-preview-tags span,
+.dashboard.landing-theme-dark .task-folder-current,
+.dashboard.landing-theme-dark .task-folder-new-button:hover,
+.dashboard.landing-theme-dark .task-folder-chip:hover,
+.dashboard.landing-theme-dark .task-folder-chip.is-selected,
+.dashboard.landing-theme-dark .task-add-folder button,
+.dashboard.landing-theme-dark .task-badge {
+  border-color: var(--dashboard-accent-soft);
+  background-color: var(--dashboard-accent-soft);
+}
+
+.dashboard.landing-theme-dark .notes-folder-new-button:hover,
+.dashboard.landing-theme-dark .notes-folder-chip:hover,
+.dashboard.landing-theme-dark .task-folder-new-button:hover,
+.dashboard.landing-theme-dark .task-folder-chip:hover,
+.dashboard.landing-theme-dark .task-folder-chip.is-selected {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .notes-add-folder,
+.dashboard.landing-theme-dark .task-add-folder {
+  border-color: var(--dashboard-accent-soft);
+}
+
+.dashboard.landing-theme-dark .notes-add-folder svg,
+.dashboard.landing-theme-dark .task-add-folder svg {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .btn-primary,
+.dashboard.landing-theme-dark .pomo-chip.active,
+.dashboard.landing-theme-dark .pomo-btn-main.play {
+  background: var(--dashboard-accent);
+  color: var(--dashboard-accent-ink);
+}
+
+.dashboard.landing-theme-dark .btn-primary:hover,
+.dashboard.landing-theme-dark .pomo-chip.active:hover,
+.dashboard.landing-theme-dark .pomo-btn-main.play:hover {
+  background: #c6d8b8;
+}
+
+.dashboard.landing-theme-light .notes-folder-current,
+.dashboard.landing-theme-light .notes-folder-new-button:hover,
+.dashboard.landing-theme-light .notes-folder-chip:hover,
+.dashboard.landing-theme-light .notes-add-folder button,
+.dashboard.landing-theme-light .task-folder-current,
+.dashboard.landing-theme-light .task-folder-new-button:hover,
+.dashboard.landing-theme-light .task-folder-chip:hover,
+.dashboard.landing-theme-light .task-folder-chip.is-selected,
+.dashboard.landing-theme-light .task-add-folder button {
+  border-color: rgba(61, 105, 74, 0.25);
+  background: rgba(61, 105, 74, 0.1);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .notes-folder-current > svg,
+.dashboard.landing-theme-light .notes-folder-new-button svg,
+.dashboard.landing-theme-light .task-folder-current > svg,
+.dashboard.landing-theme-light .task-folder-new-button svg {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .note-preview-tags span,
+.dashboard.landing-theme-light .note-modal-tags {
+  border-color: rgba(61, 105, 74, 0.24);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .pomo-outer-card,
+.dashboard.landing-theme-light .notes-card-container,
+.dashboard.landing-theme-light .analytics-card,
+.dashboard.landing-theme-light .youtube-card {
+  color: #17211c;
+}
+
+.dashboard.landing-theme-light .pomo-time-display,
+.dashboard.landing-theme-light .pomo-toggle-btn.active,
+.dashboard.landing-theme-light .pomo-badge-count,
+.dashboard.landing-theme-light .pomo-percentage-tag,
+.dashboard.landing-theme-light .note-modal-tags {
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-light .pomo-settings-panel,
+.dashboard.landing-theme-light .pomo-mode-switch,
+.dashboard.landing-theme-light .pomo-icon-btn,
+.dashboard.landing-theme-light .pomo-chip,
+.dashboard.landing-theme-light .pomo-input,
+.dashboard.landing-theme-light .youtube-input,
+.dashboard.landing-theme-light .analytics-period-switch button.active {
+  border-color: var(--lp-line);
+  background-color: rgba(255, 255, 255, 0.75);
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .youtube-header h2,
+.dashboard.landing-theme-light .note-modal-title {
+  color: var(--lp-text);
+}
+
+.dashboard.landing-theme-light .youtube-pill,
+.dashboard.landing-theme-light .youtube-status,
+.dashboard.landing-theme-light .pomo-badge-label,
+.dashboard.landing-theme-light .pomo-field,
+.dashboard.landing-theme-light .pomo-chip,
+.dashboard.landing-theme-light .notes-folder-current,
+.dashboard.landing-theme-light .task-folder-current {
+  color: var(--lp-muted);
+}
+
+.dashboard.landing-theme-light .nav-tab.active,
+.dashboard.landing-theme-light .type-chip.active,
+.dashboard.landing-theme-light .style-toggle-btn.active,
+.dashboard.landing-theme-light .playlist-item.active,
+.dashboard.landing-theme-light .settings-action-btn.secondary,
+.dashboard.landing-theme-light .settings-action-btn.import {
+  border-color: rgba(61, 105, 74, 0.3);
+  background: rgba(61, 105, 74, 0.12);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .nav-tab.active,
+.dashboard.landing-theme-dark .type-chip.active,
+.dashboard.landing-theme-dark .style-toggle-btn.active,
+.dashboard.landing-theme-dark .playlist-item.active,
+.dashboard.landing-theme-dark .settings-action-btn.secondary,
+.dashboard.landing-theme-dark .settings-action-btn.import {
+  border-color: var(--dashboard-accent-soft);
+  background: var(--dashboard-accent-soft);
+  color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .field-stack input:focus {
+  border-color: var(--dashboard-accent);
+}
+
+.dashboard.landing-theme-dark .pomo-btn-main.play {
+  background: var(--dashboard-accent);
+  color: var(--dashboard-accent-ink);
+  box-shadow: 0 4px 14px rgba(182, 210, 173, 0.28);
+}
+
+.dashboard.landing-theme-dark .settings-header-title svg {
+  color: var(--dashboard-accent);
+}
+
+.dashboard .pomo-svg stop {
+  stop-color: var(--dashboard-accent);
+}
+
+.dashboard .pomo-timeline-fill {
+  background: linear-gradient(90deg, var(--dashboard-accent), color-mix(in srgb, var(--dashboard-accent) 62%, white));
 }
 
 .widget.rectangle {
@@ -255,6 +774,9 @@
 
 .floatingSettingsWrapper {
   position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   right: 24px;
   top: 24px;
   z-index: 120;
