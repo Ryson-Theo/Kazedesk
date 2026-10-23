@@ -7,6 +7,7 @@ import GifDropSection from "../components/landing/GifDropSection";
 import {
   FAQSection,
   FeatureGrid,
+  FeatureShowcaseSection,
   OpenSourceSection,
 } from "../components/landing/LandingSections";
 import "../styles/landing.css";
@@ -27,6 +28,7 @@ export default function LandingPage() {
       <FeatureGrid />
       <GifDropSection />
       <DemoVideosSection />
+      <FeatureShowcaseSection />
       <OpenSourceSection />
       <FAQSection />
       <LandingFooter />
