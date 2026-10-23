@@ -71,6 +71,15 @@ describe('NotesCard folders', () => {
     expect(storageManager.getStickyNotes()[0].tags).toEqual(['personal']);
   });
 
+  it('opens the new-note editor in a distinct modal surface', () => {
+    render(<NotesCard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add new note' }));
+
+    expect(screen.getByText('New note').closest('.note-modal-card')).toHaveClass('glassmorphism-card');
+    expect(screen.getByRole('textbox', { name: 'Note text' })).toBeVisible();
+  });
+
   it('keeps custom wall colors visible and editable in the dashboard notes widget', () => {
     localStorage.setItem('kazedesk_sticky_notes', JSON.stringify([{
       id: 1,

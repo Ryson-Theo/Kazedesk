@@ -83,9 +83,6 @@ export default function Dashboard() {
     return legacyBg && !merged.backgroundImage ? { ...merged, backgroundImage: legacyBg } : merged;
   });
   const [theme, setTheme] = useState(() => localStorage.getItem("kazedesk-landing-theme") === "light" ? "light" : "dark");
-  const [hasVisitedNoteWall, setHasVisitedNoteWall] = useState(
-    () => localStorage.getItem("kazedesk_note_wall_visited") === "true",
-  );
   const [widgetLayout, setWidgetLayout] = useState(() => {
     const saved = storageManager.getCardsLayout();
     return mergeSavedLayout(createDefaultLayout(), saved);
@@ -112,23 +109,6 @@ export default function Dashboard() {
     return () => {
       clearTimeout(idleTimerRef.current);
       window.removeEventListener("mousemove", handlePointerMovement);
-    };
-  }, []);
-
-  useEffect(() => {
-    const syncNoteWallVisit = () => {
-      setHasVisitedNoteWall(localStorage.getItem("kazedesk_note_wall_visited") === "true");
-    };
-
-    window.addEventListener("kazedesk-note-wall-visited", syncNoteWallVisit);
-    window.addEventListener("storage", syncNoteWallVisit);
-    window.addEventListener("pageshow", syncNoteWallVisit);
-    window.addEventListener("popstate", syncNoteWallVisit);
-    return () => {
-      window.removeEventListener("kazedesk-note-wall-visited", syncNoteWallVisit);
-      window.removeEventListener("storage", syncNoteWallVisit);
-      window.removeEventListener("pageshow", syncNoteWallVisit);
-      window.removeEventListener("popstate", syncNoteWallVisit);
     };
   }, []);
 
@@ -470,9 +450,7 @@ export default function Dashboard() {
         <div className="dashboard-control-cluster">
           <DashboardSettings config={dashboardConfig} onConfigChange={handleConfigChange} onResetLayout={handleResetLayout} />
           <div className="dashboard-top-actions">
-            {hasVisitedNoteWall && (
-              <Link className="wall-open-link" to="/wall"><Network size={16} /> Note wall</Link>
-            )}
+            <Link className="wall-open-link" to="/wall"><Network size={16} /> NoteMap</Link>
             <button type="button" className="dashboard-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
               {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
