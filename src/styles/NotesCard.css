@@ -658,9 +658,9 @@
   position: fixed;
   inset: 0;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -672,10 +672,9 @@
   width: 100%;
   max-width: 520px;
   max-height: min(720px, calc(100dvh - 2.5rem));
-  background: rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(11, 14, 13, 0.97);
+  color: #f1f2ec;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   box-shadow: 
     0 30px 60px -12px rgba(0, 0, 0, 0.56),
