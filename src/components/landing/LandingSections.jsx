@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
-import { BarChart3, CheckCircle2, CloudSun, Code2, Image, LockKeyhole, Music2, StickyNote, Timer, Users } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, BarChart3, CheckCircle2, CloudSun, Code2, Image, LockKeyhole, Music2, Network, StickyNote, Timer, Users } from "lucide-react";
+import { Link } from "react-router-dom";
 import analyticsImage from "../../assets/features/analytics.png";
 import notesImage from "../../assets/features/notes.png";
 import playlistImage from "../../assets/features/playlist.png";
@@ -28,6 +29,17 @@ const FAQS = [
   ["Where is my data stored?", "Your settings, tasks, notes, and analytics are kept in this browser's local storage."],
   ["Can I self-host it?", "Yes. Kazedesk is a client-side React app. The source is available on GitHub, and you can build and host the static site yourself."],
   ["Does it work offline?", "The app shell and locally saved information are available after loading. Weather updates and YouTube playback require internet access."],
+];
+
+const FEATURE_SHOWCASES = [
+  {
+    version: "v1.0.0",
+    status: "Available now",
+    icon: StickyNote,
+    title: "NoteMap",
+    description: "Turn a page of notes into a visual map. Arrange ideas freely, connect related thoughts, and keep your whole project in view.",
+    href: "/wall",
+  },
 ];
 
 export function FeatureGrid() {
@@ -126,6 +138,139 @@ export function FeatureGrid() {
   );
 }
 
+export function FeatureShowcaseSection() {
+  return (
+    <section className="feature-showcase-section" id="whats-new">
+      <div className="feature-showcase-inner">
+        <div className="feature-showcase-heading">
+          <span className="section-kicker">A workspace that keeps growing</span>
+          <h2>What’s new<br /><em>in Kazedesk?</em></h2>
+          <p>New ideas and improvements, collected in one place.</p>
+        </div>
+        <div className="feature-showcase-grid">
+          {FEATURE_SHOWCASES.map(({ version, status, icon: Icon, title, description, href }) => (
+            <article className="feature-showcase-card" key={title}>
+              <div className="feature-showcase-copy">
+                <div className="feature-showcase-meta">
+                  <span className="feature-showcase-version">{version}</span>
+                  <span className="feature-showcase-status">{status}</span>
+                </div>
+                <h3><Icon size={21} />{title}</h3>
+                <p>{description}</p>
+                <Link className="feature-showcase-link" to={href}>Explore NoteMap <ArrowRight size={15} /></Link>
+              </div>
+              <div className="note-map-preview" aria-hidden="true">
+                <span className="note-map-preview-kicker"><Network size={12} /> CONNECTED NOTES</span>
+                <div className="note-map-canvas">
+                  <span className="note-map-connector note-map-connector-one" />
+                  <span className="note-map-connector note-map-connector-two" />
+                  <span className="note-map-node note-map-node-one">Ideas</span>
+                  <span className="note-map-node note-map-node-two">Research</span>
+                  <span className="note-map-node note-map-node-three">Next steps</span>
+                </div>
+                <span className="note-map-preview-footer">A clearer view of your thinking</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ContributorCard({ contributor, decorative = false }) {
+  return (
+    <a
+      className="contributor-card"
+      href={contributor.html_url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`GitHub profile ${contributor.login}, ${contributor.contributions} contributions`}
+      tabIndex={decorative ? -1 : undefined}
+    >
+      <img src={contributor.avatar_url} alt="" loading="lazy" />
+      <span className="contributor-card-copy">
+        <strong>{contributor.login}</strong>
+        <small>{contributor.contributions} contributions</small>
+      </span>
+      <GithubIcon size={15} />
+    </a>
+  );
+}
+
+function ContributorMarquee() {
+  const [contributors, setContributors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const apiUrl = LANDING_LINKS.github.replace(
+      "https://github.com/",
+      "https://api.github.com/repos/"
+    );
+
+    fetch(`${apiUrl}/contributors?per_page=30`, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+      if (response.status === 204) return [];
+      return response.json();
+    })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error("GitHub returned an invalid contributor list");
+        setContributors(data.filter((contributor) => (
+          contributor.type === "User"
+          && contributor.login
+          && contributor.html_url
+          && contributor.avatar_url
+          && Number.isFinite(contributor.contributions)
+          && contributor.contributions > 0
+        )));
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") setLoadFailed(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <div className="contributors-section" aria-label="GitHub contributors">
+      <div className="contributors-heading">
+        <h3>Built together</h3>
+        <p>Profiles appear here when contributions reach the main branch.</p>
+      </div>
+      {loading && <p className="contributors-message" role="status">Loading contributor profiles…</p>}
+      {loadFailed && (
+        <p className="contributors-message" role="alert">
+          Contributor profiles are temporarily unavailable. Visit the <a href={LANDING_LINKS.github} target="_blank" rel="noreferrer">GitHub repository</a>.
+        </p>
+      )}
+      {!loading && !loadFailed && contributors.length === 0 && (
+        <p className="contributors-message">No merged contributions are listed yet. Be the first to contribute.</p>
+      )}
+      {!loading && !loadFailed && contributors.length > 0 && (
+        <div className="contributors-marquee" aria-label="Contributor profiles">
+          <div className="contributors-marquee-track">
+            <div className="contributors-marquee-group">
+              {contributors.map((contributor) => <ContributorCard contributor={contributor} key={contributor.login} />)}
+            </div>
+            <div className="contributors-marquee-group" aria-hidden="true">
+              {contributors.map((contributor) => <ContributorCard contributor={contributor} decorative key={contributor.login} />)}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OpenSourceSection() {
   const repositoryAvailable = Boolean(LANDING_LINKS.github);
 
@@ -150,6 +295,7 @@ export function OpenSourceSection() {
         </div>
         <div className="opensource-note"><Users size={15} />{repositoryAvailable ? " Contributions are welcome." : " Contributor information will appear with the repository."}</div>
       </div>
+      {repositoryAvailable && <ContributorMarquee />}
     </section>
   );
 }
