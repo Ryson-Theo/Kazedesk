@@ -2,6 +2,7 @@
 const STORAGE_KEYS = {
   DASHBOARD_CONFIG: 'kazedesk_dashboard_config',
   CARDS_LAYOUT: 'kazedesk_cards_layout',
+  MINIMIZED_WIDGETS: 'kazedesk_minimized_widgets',
   STICKY_NOTES: 'kazedesk_sticky_notes',
   NOTE_CATEGORIES: 'kazedesk_note_categories',
   NOTE_WALL: 'kazedesk_note_wall',
@@ -31,6 +32,21 @@ export const storageManager = {
   getCardsLayout: () => {
     const saved = localStorage.getItem(STORAGE_KEYS.CARDS_LAYOUT);
     return saved ? JSON.parse(saved) : {};
+  },
+  saveMinimizedWidgets: (widgets) => {
+    localStorage.setItem(STORAGE_KEYS.MINIMIZED_WIDGETS, JSON.stringify(widgets));
+  },
+  getMinimizedWidgets: () => {
+    const saved = localStorage.getItem(STORAGE_KEYS.MINIMIZED_WIDGETS);
+    if (!saved) return null;
+    try {
+      const widgets = JSON.parse(saved);
+      return widgets && typeof widgets === 'object' && !Array.isArray(widgets)
+        ? { tasks: widgets.tasks === true, youtube: widgets.youtube === true, analytics: widgets.analytics === true, notes: widgets.notes === true }
+        : null;
+    } catch {
+      return null;
+    }
   },
 
   // Sticky note storage and CRUD operations.
@@ -227,6 +243,8 @@ export const getDefaultDashboardConfig = () => ({
   ambientLightEnabled: true,
   cardStyle: 'glass', // Supported card styles: glass, transparent, and outline.
   cardBorder: 'rounded', // Supported card shapes: rounded and rectangle.
+  dockPosition: 'bottom', // Supported minimized-widget dock positions: bottom, top, left, and right.
+  dockStyle: 'icons', // Supported dock tab styles: icons and labels.
 });
 
 export const getDefaultPomodoroConfig = () => ({

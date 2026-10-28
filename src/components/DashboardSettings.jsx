@@ -23,7 +23,7 @@ const CARD_BORDERS = ['rounded', 'rectangle'];
 function extractPlaylistId(value) {
   if (!value) return '';
   const trimmed = value.trim();
-  const match = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/i) || trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]+)/i);
+  const match = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/i);
   if (match?.[1]) return match[1];
   if (/^[A-Za-z0-9_-]{16,65}$/.test(trimmed)) return trimmed;
   return '';
@@ -70,6 +70,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
   // Initialize playlist controls from the persisted playlist selection.
   const [playlistName, setPlaylistName] = useState('');
   const [playlistLink, setPlaylistLink] = useState('');
+  const [playlistError, setPlaylistError] = useState('');
   const [savedPlaylists, setSavedPlaylists] = useState(() => storageManager?.getYouTubePlaylists?.() || []);
   const [activePlaylistId, setActivePlaylistId] = useState(() => storageManager?.getCurrentYouTubePlaylist?.() || '');
 
@@ -92,6 +93,16 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
       setActivePlaylistId(storageManager?.getCurrentYouTubePlaylist?.() || '');
     }
   }, [showSettings]);
+
+  useEffect(() => {
+    const openYouTubeSettings = () => {
+      setActiveTab('youtube');
+      setShowSettings(true);
+    };
+
+    window.addEventListener('open-youtube-settings', openYouTubeSettings);
+    return () => window.removeEventListener('open-youtube-settings', openYouTubeSettings);
+  }, []);
 
   // Let keyboard users dismiss the settings dialog with Escape.
   useEffect(() => {
@@ -124,9 +135,15 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
   const handleSavePlaylist = (e) => {
     e?.preventDefault();
     const trimmed = playlistLink.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setPlaylistError('Paste a public YouTube playlist link to continue.');
+      return;
+    }
     const playlistId = extractPlaylistId(trimmed);
-    if (!playlistId) return;
+    if (!playlistId) {
+      setPlaylistError('That link does not include a playlist ID. Use a public playlist URL with list= in it.');
+      return;
+    }
 
     const saved = storageManager?.getYouTubePlaylists?.() || [];
     const next = [
@@ -145,6 +162,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
     setActivePlaylistId(playlistId);
     setPlaylistName('');
     setPlaylistLink('');
+    setPlaylistError('');
     window.dispatchEvent(new Event('youtube-playlist-updated'));
   };
 
@@ -509,7 +527,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                   <div className="tab-pane">
                     <label className="settings-label">YouTube Playlists</label>
                     <p className="settings-description">
-                      Add custom playlists or video mixes to sync with your audio widget.
+                      Add a public YouTube playlist link. Private playlists and videos that disallow embedding cannot play here.
                     </p>
 
                     <div className="field-stack">
@@ -520,9 +538,13 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                       />
                       <input
                         value={playlistLink}
-                        onChange={(event) => setPlaylistLink(event.target.value)}
+                        onChange={(event) => {
+                          setPlaylistLink(event.target.value);
+                          setPlaylistError('');
+                        }}
                         placeholder="https://www.youtube.com/playlist?list=..."
                       />
+                      {playlistError && <p className="settings-validation-message" role="alert">{playlistError}</p>}
                       <button className="settings-action-btn secondary" onClick={handleSavePlaylist}>
                         <Plus size={15} />
                         <span>Add Playlist</span>
@@ -610,6 +632,49 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                               className={`style-toggle-btn ${localConfig.cardBorder === style ? 'active' : ''}`}
                             >
                               {style}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        <label className="settings-sub-label">Minimized Widget Dock</label>
+                        <p className="settings-description">
+                          Choose where minimized widgets gather. The bottom dock expands around the ambient strip.
+                        </p>
+                        <div className="card-style-group">
+                          {[
+                            ['bottom', 'Bottom'],
+                            ['left', 'Left'],
+                            ['right', 'Right'],
+                            ['top', 'Top'],
+                          ].map(([position, label]) => (
+                            <button
+                              key={position}
+                              type="button"
+                              className={`style-toggle-btn ${(localConfig.dockPosition || 'bottom') === position ? 'active' : ''}`}
+                              onClick={() => updateConfig({ dockPosition: position })}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        <label className="settings-sub-label">Dock Tab Style</label>
+                        <div className="card-style-group">
+                          {[
+                            ['icons', 'Compact icons'],
+                            ['labels', 'Icons + labels'],
+                          ].map(([style, label]) => (
+                            <button
+                              key={style}
+                              type="button"
+                              className={`style-toggle-btn ${(localConfig.dockStyle || 'icons') === style ? 'active' : ''}`}
+                              onClick={() => updateConfig({ dockStyle: style })}
+                            >
+                              {label}
                             </button>
                           ))}
                         </div>

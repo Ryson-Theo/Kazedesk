@@ -1,10 +1,11 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Moon, Network, Sun } from "lucide-react";
+import { BarChart3, CheckSquare, Moon, Music2, Network, StickyNote, Sun } from "lucide-react";
 
 import AmbientLightStrip from "../components/AmbientLightStrip";
 import DashboardSettings from "../components/DashboardSettings";
 import DigitalPet from "../components/DigitalPet";
+import MinimizedWidgetDock from "../components/MinimizedWidgetDock";
 import PomodoroTimer from "../components/PomodoroTimer";
 import WeatherTime from "../components/WeatherTime";
 import NotesCard from "../components/NotesCard";
@@ -17,6 +18,12 @@ import "../styles/Dashboard.css";
 const AnalyticsWidget = lazy(() => import("../components/AnalyticsWidget"));
 
 const MIN_WIDGET_WIDTHS = { timer: 260, weather: 260, tasks: 260, youtube: 280, analytics: 300, notes: 360 };
+const MINIMIZABLE_WIDGETS = [
+  { id: "tasks", label: "Tasks", Icon: CheckSquare },
+  { id: "youtube", label: "YouTube", Icon: Music2 },
+  { id: "analytics", label: "Analytics", Icon: BarChart3 },
+  { id: "notes", label: "Notes", Icon: StickyNote },
+];
 
 function createDefaultLayout(viewportWidth = window.innerWidth) {
   const width = viewportWidth <= 960 ? 1280 : viewportWidth;
@@ -60,14 +67,15 @@ function mergeSavedLayout(defaultLayout, savedLayout) {
   return Object.fromEntries(Object.entries(defaultLayout).map(([id, defaults]) => {
     const stored = saved[id] && typeof saved[id] === "object" ? saved[id] : {};
     const width = Number.isFinite(stored.w) ? Math.max(MIN_WIDGET_WIDTHS[id], stored.w) : defaults.w;
-    const height = Number.isFinite(stored.h) ? stored.h : defaults.h;
+    const minHeight = id === "youtube" ? 280 : id === "notes" ? 300 : 220;
+    const height = Number.isFinite(stored.h) ? Math.max(minHeight, stored.h) : defaults.h;
     return [id, {
       ...defaults,
       ...stored,
       x: Number.isFinite(stored.x) ? stored.x : defaults.x,
       y: Number.isFinite(stored.y) ? stored.y : defaults.y,
       w: id === "notes" ? Math.max(360, width) : width,
-      h: id === "notes" ? Math.max(300, height) : height,
+      h: height,
     }];
   }));
 }
@@ -76,6 +84,7 @@ export default function Dashboard() {
   const workspaceRef = useRef(null);
   const dragMovedRef = useRef(false);
   const idleTimerRef = useRef(null);
+  const restoreAnimationTimerRef = useRef(null);
   const [dashboardConfig, setDashboardConfig] = useState(() => {
     const saved = storageManager.getDashboardConfig();
     const legacyBg = localStorage.getItem("dashboard-bg");
@@ -87,28 +96,42 @@ export default function Dashboard() {
     const saved = storageManager.getCardsLayout();
     return mergeSavedLayout(createDefaultLayout(), saved);
   });
-  const [notesMinimized, setNotesMinimized] = useState(false);
-  const [tasksMinimized, setTasksMinimized] = useState(false);
-  const [youtubeMinimized, setYoutubeMinimized] = useState(false);
-  const [analyticsMinimized, setAnalyticsMinimized] = useState(false);
+  const [minimizedWidgets, setMinimizedWidgets] = useState(() => {
+    const saved = storageManager.getMinimizedWidgets();
+    return saved ? {
+      tasks: saved.tasks === true,
+      youtube: saved.youtube === true,
+      analytics: saved.analytics === true,
+      notes: saved.notes === true,
+    } : { tasks: true, youtube: true, analytics: true, notes: true };
+  });
+  const { notes: notesMinimized, tasks: tasksMinimized, youtube: youtubeMinimized, analytics: analyticsMinimized } = minimizedWidgets;
   const [dragState, setDragState] = useState(null);
   const [resizeState, setResizeState] = useState(null);
   const [pointerIdle, setPointerIdle] = useState(false);
+  const [restoringWidgetId, setRestoringWidgetId] = useState(null);
 
   useEffect(() => {
     const hideAfterInactivity = () => setPointerIdle(true);
     const handlePointerMovement = () => {
       setPointerIdle(false);
       clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(hideAfterInactivity, 2500);
+      idleTimerRef.current = setTimeout(hideAfterInactivity, 5000);
     };
 
-    idleTimerRef.current = setTimeout(hideAfterInactivity, 2500);
-    window.addEventListener("mousemove", handlePointerMovement, { passive: true });
+    idleTimerRef.current = setTimeout(hideAfterInactivity, 5000);
+    window.addEventListener("pointermove", handlePointerMovement, { passive: true });
+    window.addEventListener("pointerdown", handlePointerMovement, { passive: true });
+    window.addEventListener("touchstart", handlePointerMovement, { passive: true });
+    window.addEventListener("focusin", handlePointerMovement);
 
     return () => {
       clearTimeout(idleTimerRef.current);
-      window.removeEventListener("mousemove", handlePointerMovement);
+      clearTimeout(restoreAnimationTimerRef.current);
+      window.removeEventListener("pointermove", handlePointerMovement);
+      window.removeEventListener("pointerdown", handlePointerMovement);
+      window.removeEventListener("touchstart", handlePointerMovement);
+      window.removeEventListener("focusin", handlePointerMovement);
     };
   }, []);
 
@@ -141,6 +164,10 @@ export default function Dashboard() {
   useEffect(() => {
     storageManager.saveCardsLayout(widgetLayout);
   }, [widgetLayout]);
+
+  useEffect(() => {
+    storageManager.saveMinimizedWidgets(minimizedWidgets);
+  }, [minimizedWidgets]);
 
   useEffect(() => {
     if (dashboardConfig.backgroundImage) {
@@ -183,8 +210,8 @@ export default function Dashboard() {
       }
 
       if (resizeState) {
-        const minWidth = resizeState.id === "notes" ? 360 : 260;
-        const minHeight = resizeState.id === "notes" ? 300 : 220;
+        const minWidth = resizeState.id === "notes" ? 360 : resizeState.id === "youtube" ? 280 : 260;
+        const minHeight = resizeState.id === "notes" ? 300 : resizeState.id === "youtube" ? 280 : 220;
         const nextWidth = Math.max(minWidth, event.clientX - bounds.left - resizeState.offsetX);
         const nextHeight = Math.max(minHeight, event.clientY - bounds.top + scrollTop - resizeState.offsetY);
         setWidgetLayout((prev) => ({
@@ -279,6 +306,22 @@ export default function Dashboard() {
     workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const toggleWidgetMinimized = (id) => {
+    if (minimizedWidgets[id]) {
+      setRestoringWidgetId(id);
+      clearTimeout(restoreAnimationTimerRef.current);
+      restoreAnimationTimerRef.current = setTimeout(() => setRestoringWidgetId(null), 720);
+    }
+    setMinimizedWidgets((previous) => ({ ...previous, [id]: !previous[id] }));
+  };
+
+  const dockItems = MINIMIZABLE_WIDGETS
+    .map((item) => ({
+      ...item,
+      active: !minimizedWidgets[item.id],
+      onRestore: () => toggleWidgetMinimized(item.id),
+    }));
+
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
@@ -343,7 +386,7 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${tasksMinimized ? "task-widget-minimized" : ""} ${tasksMinimized && pointerIdle ? "minimized-widget-idle-hidden" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${tasksMinimized ? "task-widget-minimized widget-docked" : ""} ${restoringWidgetId === "tasks" ? "widget-restoring" : ""}`}
           data-widget-id="tasks"
           style={{
             left: `${widgetLayout.tasks.x}px`,
@@ -359,15 +402,12 @@ export default function Dashboard() {
           <div className="widget-resize-handle" onMouseDown={(event) => startResize("tasks", event)} />
           <TaskCard
             minimized={tasksMinimized}
-            onToggleMinimize={() => {
-              if (tasksMinimized && dragMovedRef.current) return;
-              setTasksMinimized((prev) => !prev);
-            }}
+            onToggleMinimize={() => toggleWidgetMinimized("tasks")}
           />
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${youtubeMinimized ? "youtube-widget-minimized" : ""} ${youtubeMinimized && pointerIdle ? "minimized-widget-idle-hidden" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${youtubeMinimized ? "youtube-widget-minimized widget-docked" : ""} ${restoringWidgetId === "youtube" ? "widget-restoring" : ""}`}
           data-widget-id="youtube"
           style={{
             left: `${widgetLayout.youtube.x}px`,
@@ -383,15 +423,13 @@ export default function Dashboard() {
           <div className="widget-resize-handle" onMouseDown={(event) => startResize("youtube", event)} />
           <YouTubePlayer
             minimized={youtubeMinimized}
-            onToggleMinimize={() => {
-              if (youtubeMinimized && dragMovedRef.current) return;
-              setYoutubeMinimized((prev) => !prev);
-            }}
+            onResize={(event) => startResize("youtube", event)}
+            onToggleMinimize={() => toggleWidgetMinimized("youtube")}
           />
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${analyticsMinimized ? "analytics-widget-minimized" : ""} ${analyticsMinimized && pointerIdle ? "minimized-widget-idle-hidden" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${analyticsMinimized ? "analytics-widget-minimized widget-docked" : ""} ${restoringWidgetId === "analytics" ? "widget-restoring" : ""}`}
           data-widget-id="analytics"
           style={{
             left: `${widgetLayout.analytics.x}px`,
@@ -408,16 +446,13 @@ export default function Dashboard() {
           <Suspense fallback={null}>
             <AnalyticsWidget
               minimized={analyticsMinimized}
-              onToggleMinimize={() => {
-                if (analyticsMinimized && dragMovedRef.current) return;
-                setAnalyticsMinimized((prev) => !prev);
-              }}
+              onToggleMinimize={() => toggleWidgetMinimized("analytics")}
             />
           </Suspense>
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${notesMinimized ? "notes-widget-minimized" : ""} ${notesMinimized && pointerIdle ? "minimized-widget-idle-hidden" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${notesMinimized ? "notes-widget-minimized widget-docked" : ""} ${restoringWidgetId === "notes" ? "widget-restoring" : ""}`}
           data-widget-id="notes"
           style={{
             left: `${widgetLayout.notes.x}px`,
@@ -433,10 +468,7 @@ export default function Dashboard() {
           <div className="widget-resize-handle" onMouseDown={(event) => startResize("notes", event)} />
           <NotesCard
             minimized={notesMinimized}
-            onToggleMinimize={() => {
-              if (notesMinimized && dragMovedRef.current) return;
-              setNotesMinimized((prev) => !prev);
-            }}
+            onToggleMinimize={() => toggleWidgetMinimized("notes")}
           />
         </div>
 
@@ -458,9 +490,27 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bottomAmbient">
-        <AmbientLightStrip color={dashboardConfig.ambientLightColor || "#60a5fa"} enabled={dashboardConfig.ambientLightEnabled !== false} idle={pointerIdle} />
-      </div>
+      {dashboardConfig.dockPosition !== "bottom" && (
+        <MinimizedWidgetDock
+          items={dockItems}
+          position={dashboardConfig.dockPosition || "bottom"}
+          style={dashboardConfig.dockStyle || "icons"}
+          idle={pointerIdle}
+        />
+      )}
+      {dashboardConfig.ambientLightEnabled !== false && (
+        <div className={`bottomAmbient ${dashboardConfig.dockPosition === "bottom" ? "bottomAmbient-with-dock" : ""}`}>
+          <AmbientLightStrip
+            color={dashboardConfig.ambientLightColor || "#b6d2ad"}
+            idle={pointerIdle}
+            dockItems={dashboardConfig.dockPosition === "bottom" ? dockItems : []}
+            dockStyle={dashboardConfig.dockStyle || "icons"}
+          />
+        </div>
+      )}
+      {dashboardConfig.dockPosition === "bottom" && dashboardConfig.ambientLightEnabled === false && (
+        <MinimizedWidgetDock items={dockItems} position="bottom" style={dashboardConfig.dockStyle || "icons"} />
+      )}
 
       <div className="dashboard-attribution">
         Kazedesk — a project by <a href="https://ribin-portfolio.vercel.app/" target="_blank" rel="noreferrer">Ribin K Roy</a>
