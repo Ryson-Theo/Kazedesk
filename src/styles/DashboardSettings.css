@@ -184,6 +184,13 @@
   line-height: 1.45;
 }
 
+.settings-validation-message {
+  margin: -0.4rem 0 0;
+  color: #fca5a5;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
 .settings-sub-label {
   color: #cbd5e1;
   font-size: 0.72rem;

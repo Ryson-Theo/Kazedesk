@@ -1,135 +1,228 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AudioLines, Play, AlertCircle, Square, Sparkles } from 'lucide-react';
+import { AlertCircle, AudioLines, Play, Sparkles, X } from 'lucide-react';
+import MinimizedWidgetDock from './MinimizedWidgetDock';
 
-export default function AmbientLightStrip({ color = '#38bdf8', enabled = true, idle = false }) {
+export default function AmbientLightStrip({
+  color = '#b6d2ad',
+  enabled = true,
+  idle = false,
+  dockItems = [],
+  dockStyle = 'icons',
+}) {
   const canvasRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const streamRef = useRef(null);
   const dataArrayRef = useRef(null);
   const animationIdRef = useRef(null);
+  const smoothedLevelsRef = useRef([]);
+  const stopControlTimerRef = useRef(null);
 
-  const [mode, setMode] = useState('idle'); // Modes: idle, live audio, or simulated audio.
-  const [error, setError] = useState(null);
+  const [mode, setMode] = useState('idle');
+  const [error, setError] = useState('');
+  const [stopControlVisible, setStopControlVisible] = useState(false);
+  const canConnect = typeof navigator !== 'undefined'
+    && Boolean(navigator.mediaDevices?.getDisplayMedia)
+    && Boolean(window.AudioContext || window.webkitAudioContext)
+    && !window.matchMedia('(max-width: 767px)').matches
+    && !/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 
-  // Match the canvas backing store to its displayed size and device pixel ratio.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return undefined;
 
-    const resizeObserver = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+    const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const context = canvas.getContext('2d');
+      context?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
 
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-
-      const ctx = canvas.getContext('2d');
-      if (ctx) ctx.scale(dpr, dpr);
-    });
-
-    resizeObserver.observe(canvas);
-    return () => resizeObserver.disconnect();
+    const observer = new ResizeObserver(resizeCanvas);
+    observer.observe(canvas);
+    resizeCanvas();
+    return () => observer.disconnect();
   }, []);
 
-  // Draw live frequency data or a generated waveform until the mode changes.
   const visualize = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
 
-    let simPhase = 0;
-
+    let phase = 0;
+    let lastFrameTime = 0;
+    let frameCount = 0;
     const draw = () => {
       animationIdRef.current = requestAnimationFrame(draw);
+      frameCount += 1;
+      if (frameCount % 2 !== 0) return;
 
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
+      const { width, height } = canvas.getBoundingClientRect();
+      if (!width || !height) return;
+      context.clearRect(0, 0, width, height);
 
-      let bufferLength = 32;
-      let values = [];
-
+      const barCount = Math.max(24, Math.min(52, Math.floor(width / 15)));
+      let levels = [];
       if (mode === 'real' && analyserRef.current && dataArrayRef.current) {
         analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-        bufferLength = dataArrayRef.current.length;
-        values = Array.from(dataArrayRef.current);
-      } else if (mode === 'simulated') {
-        simPhase += 0.05;
-        for (let i = 0; i < bufferLength; i++) {
-          const noise = Math.sin(simPhase + i * 0.3) * 0.4 + Math.cos(simPhase * 0.7 + i * 0.2) * 0.4 + 0.5;
-          values.push(Math.min(255, Math.max(20, noise * 255)));
+        const spectrum = dataArrayRef.current;
+        let peak = 0.16;
+        for (let index = 0; index < spectrum.length; index += 1) {
+          peak = Math.max(peak, spectrum[index] / 255);
         }
+        levels = Array.from({ length: barCount }, (_, index) => {
+          const progress = index / Math.max(1, barCount - 1);
+          const binPosition = Math.expm1(progress * Math.log(spectrum.length));
+          const lowBin = Math.max(0, Math.floor(binPosition));
+          const highBin = Math.min(spectrum.length - 1, lowBin + 1);
+          const fraction = binPosition - lowBin;
+          const energy = ((spectrum[lowBin] * (1 - fraction)) + (spectrum[highBin] * fraction)) / 255;
+          const floor = peak * 0.1;
+          const relativeEnergy = Math.max(0, (energy - floor) / (peak - floor));
+          return 0.035 + Math.pow(relativeEnergy, 0.72) * Math.min(0.9, 0.55 + peak * 0.6);
+        });
+      } else if (mode === 'simulated') {
+        const now = performance.now();
+        phase += Math.min(0.05, (now - (lastFrameTime || now)) / 1000);
+        lastFrameTime = now;
+        const beatDuration = 60 / 84;
+        const beatPhase = (phase % beatDuration) / beatDuration;
+        const offbeatPhase = ((phase + beatDuration * 0.5) % beatDuration) / beatDuration;
+        const beatKick = Math.exp(-beatPhase * 8);
+        const offbeat = Math.exp(-offbeatPhase * 12);
+        levels = Array.from({ length: barCount }, (_, index) => {
+          const progress = index / Math.max(1, barCount - 1);
+          const slowPhrase = Math.sin(phase * 0.52 + progress * 13 + Math.sin(progress * 29 + phase * 0.17) * 0.72);
+          const midPhrase = Math.sin(phase * 0.86 - progress * 31 + Math.sin(phase * 0.31 + progress * 5) * 0.55);
+          const highPhrase = Math.sin(phase * 0.42 + progress * 47 + Math.sin(progress * 17 - phase * 0.13));
+          const contour = 0.22 + slowPhrase * 0.24 + midPhrase * 0.17 + highPhrase * 0.1;
+          const bassWeight = Math.exp(-progress * 1.8);
+          const beat = beatKick * bassWeight * (0.12 + 0.2 * Math.max(0, slowPhrase));
+          const offbeatAccent = offbeat * (0.035 + progress * 0.08)
+            * (0.25 + Math.max(0, Math.sin(phase * 6.8 + progress * 23)) * 0.75);
+          const melody = Math.max(0, contour) * (0.72 + Math.max(0, midPhrase) * 0.18);
+          const texture = Math.max(0, Math.sin(phase * 2.1 + progress * 37)) * 0.1;
+          return Math.min(0.96, 0.04 + beat + offbeatAccent + melody + texture);
+        });
       } else {
         return;
       }
 
-      const barWidth = (width / bufferLength) * 1.2;
-      let x = 0;
+      const previousLevels = smoothedLevelsRef.current;
+      const nextLevels = Array.from({ length: barCount }, (_, index) => {
+        const rawLevel = levels[index];
+        const smoothed = previousLevels[index] === undefined
+          ? rawLevel
+          : previousLevels[index] + (rawLevel - previousLevels[index]) * (rawLevel > previousLevels[index] ? 0.34 : 0.14);
+        return Math.max(0.045, Math.min(0.96, smoothed));
+      });
 
-      for (let i = 0; i < bufferLength; i++) {
-        const value = values[i];
-        const barHeight = (value / 255) * height * 0.85;
-
-        const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
-        gradient.addColorStop(0, color);
-        gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.3)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-        ctx.save();
-        ctx.fillStyle = gradient;
-
-        const radius = Math.min(barWidth / 2, 4);
-        if (typeof ctx.roundRect === 'function') {
-          ctx.beginPath();
-          ctx.roundRect(x, height - barHeight, barWidth - 2, barHeight, [radius, radius, 0, 0]);
-          ctx.fill();
-        } else {
-          ctx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
+      const slotWidth = width / barCount;
+      const barWidth = Math.min(9, slotWidth * 0.58);
+      const segmentGap = 1;
+      const segmentHeight = Math.max(1.7, Math.min(2.5, (height - 6) / 15));
+      const segmentStep = segmentHeight + segmentGap;
+      const maxSegments = Math.max(1, Math.floor((height - 4) / segmentStep));
+      const baseline = height - 2;
+      const gradient = context.createLinearGradient(0, baseline, 0, 2);
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.96)');
+      gradient.addColorStop(0.62, color);
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0.4)');
+      context.fillStyle = gradient;
+      context.shadowColor = color;
+      context.shadowBlur = 3;
+      context.beginPath();
+      for (let index = 0; index < nextLevels.length; index += 1) {
+        const level = nextLevels[index];
+        const activeSegments = Math.max(1, Math.round(level * maxSegments));
+        const x = index * slotWidth + (slotWidth - barWidth) / 2;
+        for (let segment = 0; segment < activeSegments; segment += 1) {
+          const y = baseline - segmentHeight - segment * segmentStep;
+          if (typeof context.roundRect === 'function') {
+            context.roundRect(x, y, barWidth, segmentHeight, Math.min(1.2, segmentHeight / 2));
+          } else {
+            context.rect(x, y, barWidth, segmentHeight);
+          }
         }
-
-        if (value > 10) {
-          ctx.shadowColor = color;
-          ctx.shadowBlur = 10;
-          ctx.fillStyle = '#ffffff';
-          ctx.globalAlpha = value / 255;
-          ctx.fillRect(x, height - barHeight, barWidth - 2, 2);
-        }
-
-        ctx.restore();
-        x += barWidth;
       }
+      context.fill();
+      context.shadowBlur = 0;
+      smoothedLevelsRef.current = nextLevels;
     };
 
     draw();
   }, [color, mode]);
 
   useEffect(() => {
-    if (mode !== 'idle') {
-      visualize();
-    }
+    if (mode !== 'idle') visualize();
     return () => {
       if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
+      animationIdRef.current = null;
     };
   }, [mode, visualize]);
 
-  // Screen-audio capture is available only in secure browser contexts.
-  const startSystemAudioCapture = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+  const revealStopControl = useCallback(() => {
+    if (mode === 'idle') return;
+    setStopControlVisible(true);
+    clearTimeout(stopControlTimerRef.current);
+    stopControlTimerRef.current = setTimeout(() => setStopControlVisible(false), 2600);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === 'idle') {
+      setStopControlVisible(false);
+      clearTimeout(stopControlTimerRef.current);
+      return undefined;
     }
 
+    revealStopControl();
+    const hideOnOutsideClick = (event) => {
+      if (!event.target.closest('.ambient-strip')) setStopControlVisible(false);
+    };
+    document.addEventListener('pointerdown', hideOnOutsideClick);
+    return () => {
+      clearTimeout(stopControlTimerRef.current);
+      document.removeEventListener('pointerdown', hideOnOutsideClick);
+    };
+  }, [mode, revealStopControl]);
+
+  const stopAudioCapture = (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
+    animationIdRef.current = null;
+    clearTimeout(stopControlTimerRef.current);
+    setStopControlVisible(false);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    dataArrayRef.current = null;
+    setMode('idle');
+  };
+
+  const startSystemAudioCapture = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setError('');
+
+    if (!window.isSecureContext) {
+      setError('Audio capture needs HTTPS or localhost.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setError('This mobile browser cannot share system audio. Try Simulate or connect from desktop.');
+      return;
+    }
+
+    let stream;
     try {
-      setError(null);
-
-      // Fail early when the browser does not expose the screen-capture API.
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        throw new Error('Requires HTTPS or localhost server environment.');
-      }
-
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: {
           echoCancellation: false,
@@ -142,145 +235,122 @@ export default function AmbientLightStrip({ color = '#38bdf8', enabled = true, i
       });
 
       const audioTracks = stream.getAudioTracks();
-      if (audioTracks.length === 0) {
+      if (!audioTracks.length) {
         stream.getTracks().forEach((track) => track.stop());
-        throw new Error('Share audio option was unchecked.');
+        setError('No shared audio was provided. Enable “Share tab audio” or “Share system audio”.');
+        return;
       }
 
       stream.getVideoTracks().forEach((track) => track.stop());
       streamRef.current = stream;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error('Audio visualization is not supported by this browser.');
 
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const audioContext = new AudioCtx();
+      const audioContext = new AudioContextClass();
       audioContextRef.current = audioContext;
-
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-      }
+      if (audioContext.state === 'suspended') await audioContext.resume();
 
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 128;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.72;
+      audioContext.createMediaStreamSource(stream).connect(analyser);
       analyserRef.current = analyser;
-
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
-
       dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
-
-      audioTracks[0].onended = () => stopAudioCapture();
-
+      audioTracks[0].addEventListener('ended', stopAudioCapture, { once: true });
       setMode('real');
-    } catch (err) {
-      console.warn('Audio capture error/canceled:', err);
-      setError(err instanceof Error ? err.message : 'Audio access denied');
-      // Keep the visualizer available when capture is denied or unavailable.
-      setMode('simulated');
+    } catch (captureError) {
+      stream?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        await audioContextRef.current.close();
+      }
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      dataArrayRef.current = null;
+      const isCancel = captureError instanceof DOMException
+        && ['AbortError', 'NotAllowedError'].includes(captureError.name);
+      setError(isCancel
+        ? 'Audio sharing was canceled or permission was not granted.'
+        : captureError instanceof Error ? captureError.message : 'Could not connect to shared audio.');
     }
   };
 
-  const stopAudioCapture = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
-      audioContextRef.current = null;
     }
-    setMode('idle');
-  };
-
-  useEffect(() => {
-    return () => stopAudioCapture();
+    if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
   }, []);
 
   if (!enabled) return null;
 
+  const splitIndex = Math.ceil(dockItems.length / 2);
+  const leftItems = dockItems.slice(0, splitIndex);
+  const rightItems = dockItems.slice(splitIndex);
+
   return (
-    <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-2xl h-16 rounded-2xl border border-white/15 bg-white/10 backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.35)] overflow-hidden flex items-center px-4 transition-all duration-300 pointer-events-auto ${idle && mode === 'idle' ? 'ambient-strip-idle-hidden' : ''}`}>
-      
-      {/* Keep the canvas decorative so the controls beneath it remain interactive. */}
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full block transition-opacity duration-500 pointer-events-none"
-        style={{ opacity: mode !== 'idle' ? 1 : 0.1 }}
-      />
-
-      {/* Offer capture controls while no audio source is active. */}
-      {mode === 'idle' && (
-        <div className="absolute inset-0 z-10 flex items-center justify-between px-5 bg-black/40 backdrop-blur-md pointer-events-auto">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-white/10 border border-white/10 text-white/90">
-              {error ? (
-                <AlertCircle className="h-4 w-4 text-amber-400" />
-              ) : (
-                <AudioLines className="h-4 w-4" />
-              )}
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-xs font-semibold text-white tracking-wide">
-                Ambient Sound Sync
-              </span>
-              <span className="text-[11px] text-white/60 max-w-55 truncate">
-                {error || 'Sync with YouTube Music or desktop tabs'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                setMode('simulated');
-              }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 text-white text-xs font-medium hover:bg-white/20 active:scale-95 transition-all cursor-pointer z-20"
-            >
-              <Sparkles className="h-3 w-3" />
-              Simulate
-            </button>
-
-            <button
-              type="button"
-              onClick={startSystemAudioCapture}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white text-black text-xs font-semibold hover:bg-white/90 active:scale-95 transition-all shadow-md cursor-pointer z-20"
-            >
-              <Play className="h-3 w-3 fill-black" />
-              Connect
-            </button>
-          </div>
-        </div>
+    <div
+      className={`ambient-strip ${dockItems.length ? 'ambient-strip-has-dock' : ''} ${mode !== 'idle' ? 'ambient-strip-active' : ''} ${stopControlVisible ? 'ambient-stop-visible' : ''} ${idle && mode === 'idle' ? 'ambient-strip-idle-hidden' : ''} ${idle && mode !== 'idle' ? 'ambient-strip-active-dock-idle' : ''}`}
+      style={{ '--ambient-color': color }}
+      onPointerEnter={revealStopControl}
+      onFocusCapture={revealStopControl}
+      onPointerDown={(event) => {
+        if (!event.target.closest('.ambient-wave-stop')) setStopControlVisible(false);
+      }}
+    >
+      {leftItems.length > 0 && (
+        <MinimizedWidgetDock items={leftItems} style={dockStyle} embedded idle={idle && mode !== 'idle'} />
       )}
-
-      {/* Show the active source controls and capture status. */}
-      {mode !== 'idle' && (
-        <div className="absolute top-2.5 right-3 z-10 flex items-center gap-2 pointer-events-auto">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md">
-            <span
-              className={`h-1.5 w-1.5 rounded-full animate-pulse ${
-                mode === 'real' ? 'bg-emerald-400' : 'bg-sky-400'
-              }`}
-            />
-            <span className="text-[10px] font-medium text-white/80">
-              {mode === 'real' ? 'Live Audio' : 'Ambient Wave'}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={stopAudioCapture}
-            title="Stop Sync"
-            className="p-1 rounded-full bg-white/10 border border-white/10 text-white/70 hover:text-white hover:bg-white/20 transition-all cursor-pointer z-20"
-          >
-            <Square className="h-3 w-3 fill-current" />
-          </button>
+      <div className="ambient-strip-main">
+        <canvas ref={canvasRef} className="ambient-strip-visualizer" aria-hidden="true" />
+        <div className="ambient-strip-status">
+          <span className="ambient-strip-icon">
+            {error ? <AlertCircle size={15} /> : <AudioLines size={15} />}
+          </span>
+          <span className="ambient-strip-copy">
+            <strong>Ambient Sound Sync</strong>
+            <span>{error || (mode === 'real' ? 'Listening to shared audio' : mode === 'simulated' ? 'Ambient wave is active' : canConnect ? 'Sync a tab or system audio' : 'Create a gentle ambient wave')}</span>
+          </span>
         </div>
+        <div className="ambient-strip-actions">
+          {mode === 'idle' ? (
+            <>
+              <button
+                type="button"
+                className="ambient-action ambient-action-secondary"
+                onClick={() => {
+                  setError('');
+                  setMode('simulated');
+                }}
+              >
+                <Sparkles size={13} />
+                <span>Simulate</span>
+              </button>
+              {canConnect && (
+                <button type="button" className="ambient-action ambient-action-primary" onClick={startSystemAudioCapture}>
+                  <Play size={13} fill="currentColor" />
+                  <span>Connect</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="ambient-wave-stop"
+                onClick={stopAudioCapture}
+                aria-label="Stop ambient sync"
+                title="Stop sync"
+              >
+                <X size={15} strokeWidth={2.5} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {rightItems.length > 0 && (
+        <MinimizedWidgetDock items={rightItems} style={dockStyle} embedded idle={idle && mode !== 'idle'} />
       )}
     </div>
   );
