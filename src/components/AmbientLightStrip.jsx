@@ -63,7 +63,7 @@ export default function AmbientLightStrip({
       if (!width || !height) return;
       context.clearRect(0, 0, width, height);
 
-      const barCount = Math.max(24, Math.min(52, Math.floor(width / 15)));
+      const barCount = Math.max(36, Math.min(112, Math.floor(width / 7)));
       let levels = [];
       if (mode === 'real' && analyserRef.current && dataArrayRef.current) {
         analyserRef.current.getByteFrequencyData(dataArrayRef.current);
@@ -120,7 +120,7 @@ export default function AmbientLightStrip({
       });
 
       const slotWidth = width / barCount;
-      const barWidth = Math.min(9, slotWidth * 0.58);
+      const barWidth = Math.min(9, slotWidth * 0.88);
       const segmentGap = 1;
       const segmentHeight = Math.max(1.7, Math.min(2.5, (height - 6) / 15));
       const segmentStep = segmentHeight + segmentGap;
@@ -296,7 +296,7 @@ export default function AmbientLightStrip({
       onPointerEnter={revealStopControl}
       onFocusCapture={revealStopControl}
       onPointerDown={(event) => {
-        if (!event.target.closest('.ambient-wave-stop')) setStopControlVisible(false);
+        if (!event.target.closest('.ambient-wave-stop')) revealStopControl();
       }}
     >
       {leftItems.length > 0 && (
