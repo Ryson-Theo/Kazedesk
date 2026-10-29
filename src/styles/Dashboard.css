@@ -1427,8 +1427,8 @@
   .digital-pet-anchor {
     position: fixed;
     top: auto !important;
-    right: 14px;
-    bottom: 88px;
+    right: max(14px, env(safe-area-inset-right, 0px));
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
     left: auto !important;
     z-index: 1001;
     transform: none;
