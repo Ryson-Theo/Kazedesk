@@ -7,6 +7,7 @@ describe('TaskCard', () => {
   it('creates category folders and repeats a task daily', () => {
     render(<TaskCard />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
     fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'New category name' }), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }));
@@ -30,6 +31,32 @@ describe('TaskCard', () => {
     expect(screen.getByRole('menuitem', { name: /Stop daily repeat/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
     expect(screen.getByRole('button', { name: 'Priority for Read chapter' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Priority for Read chapter' }));
+    expect(screen.getByRole('listbox', { name: 'Priority for Read chapter' }))
+      .toHaveClass('ui-select-menu--portal');
+    fireEvent.click(screen.getByRole('option', { name: 'High' }));
+    expect(storageManager.getTasks()[0].priority).toBe('high');
+  });
+
+  it('keeps minimize beside the options menu in the header', () => {
+    render(<TaskCard />);
+
+    const header = document.querySelector('.task-header');
+    expect(header.querySelector('h2')).toHaveTextContent("Today's Tasks");
+    expect(header.querySelector('.task-badge')).toHaveTextContent('0');
+    expect(header.querySelectorAll('button')).toHaveLength(2);
+    expect(header.querySelector('.task-header-actions').lastElementChild)
+      .toHaveAccessibleName('Show task options');
+    expect(header.querySelector('.task-header-actions').firstElementChild)
+      .toHaveAccessibleName('Minimize tasks');
+    expect(screen.queryByRole('button', { name: 'New folder' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
+    expect(screen.getByRole('button', { name: 'New folder' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add new task' })).toBeInTheDocument();
+    expect(document.querySelector('.task-tools-panel')).not.toContainElement(
+      screen.getByRole('button', { name: 'Minimize tasks' }),
+    );
   });
 
   it('advances a due daily reminder to the same local time tomorrow', () => {
@@ -75,6 +102,8 @@ describe('TaskCard', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<TaskCard />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose task folder' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete Work folder' }));
 
     expect(storageManager.getTaskCategories()).toEqual(['Inbox']);
@@ -90,12 +119,133 @@ describe('TaskCard', () => {
     ]));
     render(<TaskCard />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sort tasks' }));
+    expect(screen.getByRole('listbox', { name: 'Sort tasks' }))
+      .toHaveClass('ui-select-menu--portal');
     fireEvent.click(screen.getByRole('option', { name: 'Alphabetical' }));
 
     expect(screen.getByRole('button', { name: 'Sort tasks' })).toHaveAttribute('title', 'Sort tasks: Alphabetical');
     expect(Array.from(document.querySelectorAll('.task-item-title-input')).map((input) => input.value))
       .toEqual(['Alpha task', 'Zebra task']);
+  });
+
+  it('reveals folder choices from the compact task options panel', () => {
+    render(<TaskCard />);
+
+    const optionsToggle = screen.getByRole('button', { name: 'Show task options' });
+    expect(screen.queryByRole('button', { name: 'Choose task folder' })).not.toBeInTheDocument();
+
+    fireEvent.click(optionsToggle);
+    const folderToggle = screen.getByRole('button', { name: 'Choose task folder' });
+    expect(folderToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(document.querySelector('.task-folder-choices')).toBeNull();
+
+    fireEvent.click(folderToggle);
+
+    expect(folderToggle).toHaveAttribute('aria-expanded', 'true');
+    const folderChoices = document.querySelector('.task-folder-choices');
+    expect(folderChoices).toHaveClass('is-open');
+    expect(screen.getByRole('button', { name: /Inbox/ })).toBeInTheDocument();
+  });
+
+  it('shows todays reminders across folders and unreminded Inbox tasks in Today', () => {
+    const todayReminder = new Date();
+    todayReminder.setHours(18, 30, 0, 0);
+    const tomorrowReminder = new Date(todayReminder);
+    tomorrowReminder.setDate(tomorrowReminder.getDate() + 1);
+    localStorage.setItem('kazedesk_task_categories', JSON.stringify(['Inbox', 'Work']));
+    localStorage.setItem('kazedesk_tasks', JSON.stringify([
+      { id: 21, title: 'Inbox quick task', category: 'Inbox', completed: false },
+      { id: 22, title: 'Work due today', category: 'Work', completed: false, reminder: todayReminder.toISOString() },
+      { id: 23, title: 'Work due tomorrow', category: 'Work', completed: false, reminder: tomorrowReminder.toISOString() },
+      { id: 24, title: 'Inbox scheduled tomorrow', category: 'Inbox', completed: false, reminder: tomorrowReminder.toISOString() },
+    ]));
+    render(<TaskCard />);
+
+    expect(screen.getByRole('heading', { name: "Today's Tasks" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Inbox quick task')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Work due today')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Work due tomorrow')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Inbox scheduled tomorrow')).not.toBeInTheDocument();
+  });
+
+  it('swipes left to Today and right through user-created folders', () => {
+    localStorage.setItem('kazedesk_task_categories', JSON.stringify(['Inbox', 'Work', 'Home']));
+    render(<TaskCard />);
+    const taskList = document.querySelector('.task-list');
+
+    const startSwipe = (x, y) => {
+      const event = new Event('touchstart', { bubbles: true });
+      Object.defineProperty(event, 'touches', { value: [{ clientX: x, clientY: y }] });
+      fireEvent(taskList, event);
+    };
+    const endSwipe = (x, y) => {
+      const event = new Event('touchend', { bubbles: true });
+      Object.defineProperty(event, 'changedTouches', { value: [{ clientX: x, clientY: y }] });
+      fireEvent(taskList, event);
+    };
+
+    startSwipe(160, 100);
+    endSwipe(240, 102);
+    expect(screen.getByRole('heading', { name: 'Work' })).toBeInTheDocument();
+
+    startSwipe(240, 100);
+    endSwipe(160, 102);
+    expect(screen.getByRole('heading', { name: "Today's Tasks" })).toBeInTheDocument();
+  });
+
+  it('limits visible tasks to 5, 10, or the maximum', () => {
+    localStorage.setItem('kazedesk_tasks', JSON.stringify(Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      title: `Task ${index + 1}`,
+      category: 'Inbox',
+      completed: false,
+      priority: 'medium',
+    }))));
+    render(<TaskCard />);
+
+    expect(document.querySelectorAll('.task-item:not(.is-completed)')).toHaveLength(12);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
+    const limitDropdown = screen.getByRole('button', { name: 'Number of tasks to show' });
+    fireEvent.click(limitDropdown);
+    expect(screen.getByRole('listbox', { name: 'Number of tasks to show' }))
+      .toHaveClass('ui-select-menu--portal');
+    fireEvent.click(screen.getByRole('option', { name: '5 tasks' }));
+    expect(document.querySelectorAll('.task-item:not(.is-completed)')).toHaveLength(5);
+    expect(document.querySelector('.task-badge-count')).toHaveTextContent('12');
+    expect(screen.queryByText('Showing 5 of 12')).not.toBeInTheDocument();
+
+    fireEvent.click(limitDropdown);
+    fireEvent.click(screen.getByRole('option', { name: '10 tasks' }));
+    expect(document.querySelectorAll('.task-item:not(.is-completed)')).toHaveLength(10);
+
+    fireEvent.click(limitDropdown);
+    fireEvent.click(screen.getByRole('option', { name: 'Max' }));
+    expect(document.querySelectorAll('.task-item:not(.is-completed)')).toHaveLength(12);
+  });
+
+  it('uses a native time input for reminder edits and provides an in-panel close action', () => {
+    const reminder = new Date(2026, 9, 30, 15, 45).toISOString();
+    localStorage.setItem('kazedesk_tasks', JSON.stringify([
+      { id: 8, title: 'Focus block', completed: false, priority: 'medium', reminder },
+    ]));
+    render(<TaskCard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More options for Focus block' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
+    const timeInput = screen.getByLabelText('Reminder for Focus block');
+    expect(timeInput).toHaveAttribute('type', 'time');
+    expect(timeInput).toHaveValue('15:45');
+
+    fireEvent.change(timeInput, { target: { value: '09:20' } });
+    const updatedReminder = new Date(storageManager.getTasks()[0].reminder);
+    expect(updatedReminder.getHours()).toBe(9);
+    expect(updatedReminder.getMinutes()).toBe(20);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done editing Focus block' }));
+    expect(screen.queryByLabelText('Reminder for Focus block')).not.toBeInTheDocument();
   });
 
   it('deletes a task from its three-dot action menu', () => {

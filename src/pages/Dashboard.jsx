@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, CheckSquare, Moon, Music2, Network, StickyNote, Sun } from "lucide-react";
+import { BarChart3, CheckSquare, GripVertical, Moon, Music2, Network, StickyNote, Sun } from "lucide-react";
 
 import AmbientLightStrip from "../components/AmbientLightStrip";
 import DashboardSettings from "../components/DashboardSettings";
@@ -18,12 +18,18 @@ import "../styles/Dashboard.css";
 const AnalyticsWidget = lazy(() => import("../components/AnalyticsWidget"));
 
 const MIN_WIDGET_WIDTHS = { timer: 260, weather: 260, tasks: 260, youtube: 280, analytics: 300, notes: 360 };
+const WIDGET_IDS = ["timer", "weather", "tasks", "youtube", "analytics", "notes"];
 const MINIMIZABLE_WIDGETS = [
   { id: "tasks", label: "Tasks", Icon: CheckSquare },
   { id: "youtube", label: "YouTube", Icon: Music2 },
   { id: "analytics", label: "Analytics", Icon: BarChart3 },
   { id: "notes", label: "Notes", Icon: StickyNote },
 ];
+
+function normalizeWidgetOrder(order) {
+  const savedOrder = Array.isArray(order) ? order.filter((id) => WIDGET_IDS.includes(id)) : [];
+  return [...new Set([...savedOrder, ...WIDGET_IDS])];
+}
 
 function createDefaultLayout(viewportWidth = window.innerWidth) {
   const width = viewportWidth <= 960 ? 1280 : viewportWidth;
@@ -96,6 +102,9 @@ export default function Dashboard() {
     const saved = storageManager.getCardsLayout();
     return mergeSavedLayout(createDefaultLayout(), saved);
   });
+  const [mobileWidgetOrder, setMobileWidgetOrder] = useState(() => (
+    normalizeWidgetOrder(storageManager.getCardsLayout()?.mobileOrder)
+  ));
   const [minimizedWidgets, setMinimizedWidgets] = useState(() => {
     const saved = storageManager.getMinimizedWidgets();
     return saved ? {
@@ -110,6 +119,9 @@ export default function Dashboard() {
   const [resizeState, setResizeState] = useState(null);
   const [pointerIdle, setPointerIdle] = useState(false);
   const [restoringWidgetId, setRestoringWidgetId] = useState(null);
+  const [mobileDraggedWidgetId, setMobileDraggedWidgetId] = useState(null);
+  const [mobileDropTargetId, setMobileDropTargetId] = useState(null);
+  const mobilePointerRef = useRef(null);
 
   useEffect(() => {
     const hideAfterInactivity = () => setPointerIdle(true);
@@ -162,8 +174,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    storageManager.saveCardsLayout(widgetLayout);
-  }, [widgetLayout]);
+    storageManager.saveCardsLayout({ ...widgetLayout, mobileOrder: mobileWidgetOrder });
+  }, [widgetLayout, mobileWidgetOrder]);
 
   useEffect(() => {
     storageManager.saveMinimizedWidgets(minimizedWidgets);
@@ -182,7 +194,6 @@ export default function Dashboard() {
       if (!workspaceRef.current) return;
       const bounds = workspaceRef.current.getBoundingClientRect();
       const scrollTop = workspaceRef.current.scrollTop;
-      const contentHeight = Math.max(workspaceRef.current.clientHeight, workspaceRef.current.scrollHeight);
 
       if (dragState) {
         if (
@@ -194,16 +205,20 @@ export default function Dashboard() {
 
         const nextX = event.clientX - bounds.left - dragState.offsetX;
         const nextY = event.clientY - bounds.top + scrollTop - dragState.offsetY;
-        const minX = window.innerWidth > 960 ? 84 : 0;
+        const minX = 84;
 
         setWidgetLayout((prev) => {
-          const maxX = Math.max(minX, bounds.width - (dragState.width || prev[dragState.id].w || 320) - 24);
+          const width = dragState.width || prev[dragState.id].w || 320;
+          const height = dragState.height || prev[dragState.id].h || 240;
+          const maxX = Math.max(minX, bounds.width - width - 24);
+          const minY = scrollTop;
+          const maxY = Math.max(minY, scrollTop + workspaceRef.current.clientHeight - height);
           return {
             ...prev,
             [dragState.id]: {
               ...prev[dragState.id],
               x: Math.max(minX, Math.min(nextX, maxX)),
-              y: Math.max(0, Math.min(nextY, contentHeight - (dragState.height || prev[dragState.id].h || 240))),
+              y: Math.max(minY, Math.min(nextY, maxY)),
             },
           };
         });
@@ -218,8 +233,8 @@ export default function Dashboard() {
           ...prev,
           [resizeState.id]: {
             ...prev[resizeState.id],
-            w: Math.min(Math.max(minWidth, nextWidth), Math.max(minWidth, bounds.width - prev[resizeState.id].x)),
-            h: Math.min(Math.max(minHeight, nextHeight), Math.max(minHeight, contentHeight - prev[resizeState.id].y)),
+            w: Math.min(Math.max(minWidth, nextWidth), Math.max(minWidth, bounds.width - prev[resizeState.id].x - 24)),
+            h: Math.min(Math.max(minHeight, nextHeight), Math.max(minHeight, workspaceRef.current.clientHeight + scrollTop - prev[resizeState.id].y)),
           },
         }));
       }
@@ -238,6 +253,56 @@ export default function Dashboard() {
       window.removeEventListener("mouseup", handleUp);
     };
   }, [dragState, resizeState]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const pointer = mobilePointerRef.current;
+      if (!pointer) return;
+
+      if (!pointer.active) {
+        const moved = Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY);
+        if (moved > 10) {
+          clearTimeout(pointer.timer);
+          mobilePointerRef.current = null;
+        }
+        return;
+      }
+
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-widget-id]");
+      const targetId = target?.getAttribute("data-widget-id");
+      pointer.dropTargetId = WIDGET_IDS.includes(targetId) ? targetId : null;
+      setMobileDropTargetId(pointer.dropTargetId);
+    };
+
+    const handlePointerUp = () => {
+      const pointer = mobilePointerRef.current;
+      if (!pointer) return;
+      clearTimeout(pointer.timer);
+      if (pointer.active && pointer.dropTargetId && pointer.dropTargetId !== pointer.id) {
+        setMobileWidgetOrder((previous) => {
+          const next = [...previous];
+          const sourceIndex = next.indexOf(pointer.id);
+          const targetIndex = next.indexOf(pointer.dropTargetId);
+          if (sourceIndex < 0 || targetIndex < 0) return previous;
+          next.splice(sourceIndex, 1);
+          next.splice(targetIndex, 0, pointer.id);
+          return next;
+        });
+      }
+      mobilePointerRef.current = null;
+      setMobileDraggedWidgetId(null);
+      setMobileDropTargetId(null);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, []);
 
   const handleConfigChange = (updates) => {
     const next = { ...dashboardConfig, ...updates };
@@ -274,6 +339,7 @@ export default function Dashboard() {
   };
 
   const startDrag = (id, event) => {
+    if (window.innerWidth <= 960) return;
     if (!workspaceRef.current) return;
     const bounds = workspaceRef.current.getBoundingClientRect();
     const current = widgetLayout[id];
@@ -289,8 +355,60 @@ export default function Dashboard() {
     });
   };
 
+  const startMobileWidgetReorder = (id, event) => {
+    if (window.innerWidth > 960) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (mobilePointerRef.current) clearTimeout(mobilePointerRef.current.timer);
+
+    const pointer = {
+      id,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      dropTargetId: null,
+      timer: null,
+    };
+    mobilePointerRef.current = pointer;
+    setMobileDropTargetId(null);
+
+    pointer.timer = setTimeout(() => {
+      if (mobilePointerRef.current !== pointer) return;
+      pointer.active = true;
+      setMobileDraggedWidgetId(id);
+    }, 500);
+  };
+
+  const renderMobileDragZones = (id) => (
+    <>
+      <button
+        type="button"
+        className="widget-mobile-drag-zone widget-mobile-drag-zone-left"
+        aria-label={`Hold to reorder ${id}`}
+        tabIndex={-1}
+        onPointerDown={(event) => startMobileWidgetReorder(id, event)}
+        onMouseDown={(event) => event.stopPropagation()}
+      />
+      <button
+        type="button"
+        className="widget-mobile-drag-zone widget-mobile-drag-zone-right"
+        aria-label={`Hold to reorder ${id}`}
+        tabIndex={-1}
+        onPointerDown={(event) => startMobileWidgetReorder(id, event)}
+        onMouseDown={(event) => event.stopPropagation()}
+      />
+      {mobileDraggedWidgetId === id && (
+        <div className="widget-mobile-drag-indicator" aria-hidden="true">
+          <GripVertical size={16} />
+          <span>Drag to reorder</span>
+        </div>
+      )}
+    </>
+  );
+
   const startResize = (id, event) => {
     event.stopPropagation();
+    if (window.innerWidth <= 960) return;
     if (!workspaceRef.current) return;
     const bounds = workspaceRef.current.getBoundingClientRect();
     const current = widgetLayout[id];
@@ -303,6 +421,7 @@ export default function Dashboard() {
 
   const handleResetLayout = () => {
     setWidgetLayout(createDefaultLayout());
+    setMobileWidgetOrder(WIDGET_IDS);
     workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -360,11 +479,12 @@ export default function Dashboard() {
 
       <main className="workspace" ref={workspaceRef}>
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${mobileDraggedWidgetId === "timer" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "timer" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="timer"
-          style={{ left: `${widgetLayout.timer.x}px`, top: `${widgetLayout.timer.y}px`, width: `${widgetLayout.timer.w}px`, height: `${widgetLayout.timer.h}px` }}
+          style={{ left: `${widgetLayout.timer.x}px`, top: `${widgetLayout.timer.y}px`, width: `${widgetLayout.timer.w}px`, height: `${widgetLayout.timer.h}px`, order: mobileWidgetOrder.indexOf("timer") }}
           onMouseDown={(event) => startDrag("timer", event)}
         >
+          {renderMobileDragZones("timer")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("timer", event); }}>
             <span>Move</span>
           </div>
@@ -373,11 +493,12 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${mobileDraggedWidgetId === "weather" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "weather" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="weather"
-          style={{ left: `${widgetLayout.weather.x}px`, top: `${widgetLayout.weather.y}px`, width: `${widgetLayout.weather.w}px`, height: `${widgetLayout.weather.h}px` }}
+          style={{ left: `${widgetLayout.weather.x}px`, top: `${widgetLayout.weather.y}px`, width: `${widgetLayout.weather.w}px`, height: `${widgetLayout.weather.h}px`, order: mobileWidgetOrder.indexOf("weather") }}
           onMouseDown={(event) => startDrag("weather", event)}
         >
+          {renderMobileDragZones("weather")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("weather", event); }}>
             <span>Move</span>
           </div>
@@ -386,16 +507,18 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${tasksMinimized ? "task-widget-minimized widget-docked" : ""} ${restoringWidgetId === "tasks" ? "widget-restoring" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${tasksMinimized ? "task-widget-minimized widget-docked" : ""} ${restoringWidgetId === "tasks" ? "widget-restoring" : ""} ${mobileDraggedWidgetId === "tasks" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "tasks" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="tasks"
           style={{
             left: `${widgetLayout.tasks.x}px`,
             top: `${widgetLayout.tasks.y}px`,
             width: `${tasksMinimized ? 64 : widgetLayout.tasks.w}px`,
             height: `${tasksMinimized ? 64 : widgetLayout.tasks.h}px`,
+            order: mobileWidgetOrder.indexOf("tasks"),
           }}
           onMouseDown={(event) => startDrag("tasks", event)}
         >
+          {renderMobileDragZones("tasks")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("tasks", event); }}>
             <span>Move</span>
           </div>
@@ -407,16 +530,18 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${youtubeMinimized ? "youtube-widget-minimized widget-docked" : ""} ${restoringWidgetId === "youtube" ? "widget-restoring" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${youtubeMinimized ? "youtube-widget-minimized widget-docked" : ""} ${restoringWidgetId === "youtube" ? "widget-restoring" : ""} ${mobileDraggedWidgetId === "youtube" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "youtube" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="youtube"
           style={{
             left: `${widgetLayout.youtube.x}px`,
             top: `${widgetLayout.youtube.y}px`,
             width: `${youtubeMinimized ? 64 : widgetLayout.youtube.w}px`,
             height: `${youtubeMinimized ? 64 : widgetLayout.youtube.h}px`,
+            order: mobileWidgetOrder.indexOf("youtube"),
           }}
           onMouseDown={(event) => startDrag("youtube", event)}
         >
+          {renderMobileDragZones("youtube")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("youtube", event); }}>
             <span>Move</span>
           </div>
@@ -429,16 +554,18 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${analyticsMinimized ? "analytics-widget-minimized widget-docked" : ""} ${restoringWidgetId === "analytics" ? "widget-restoring" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${analyticsMinimized ? "analytics-widget-minimized widget-docked" : ""} ${restoringWidgetId === "analytics" ? "widget-restoring" : ""} ${mobileDraggedWidgetId === "analytics" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "analytics" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="analytics"
           style={{
             left: `${widgetLayout.analytics.x}px`,
             top: `${widgetLayout.analytics.y}px`,
             width: `${analyticsMinimized ? 64 : widgetLayout.analytics.w}px`,
             height: `${analyticsMinimized ? 64 : widgetLayout.analytics.h}px`,
+            order: mobileWidgetOrder.indexOf("analytics"),
           }}
           onMouseDown={(event) => startDrag("analytics", event)}
         >
+          {renderMobileDragZones("analytics")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("analytics", event); }}>
             <span>Move</span>
           </div>
@@ -452,16 +579,18 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${notesMinimized ? "notes-widget-minimized widget-docked" : ""} ${restoringWidgetId === "notes" ? "widget-restoring" : ""}`}
+          className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${notesMinimized ? "notes-widget-minimized widget-docked" : ""} ${restoringWidgetId === "notes" ? "widget-restoring" : ""} ${mobileDraggedWidgetId === "notes" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "notes" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="notes"
           style={{
             left: `${widgetLayout.notes.x}px`,
             top: `${widgetLayout.notes.y}px`,
             width: `${notesMinimized ? 64 : widgetLayout.notes.w}px`,
             height: `${notesMinimized ? 64 : widgetLayout.notes.h}px`,
+            order: mobileWidgetOrder.indexOf("notes"),
           }}
           onMouseDown={(event) => startDrag("notes", event)}
         >
+          {renderMobileDragZones("notes")}
           <div className="widget-handle" onMouseDown={(event) => { event.stopPropagation(); startDrag("notes", event); }}>
             <span>Move</span>
           </div>

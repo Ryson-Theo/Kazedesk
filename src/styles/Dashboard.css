@@ -271,6 +271,11 @@
   cursor: grab;
 }
 
+.widget-mobile-drag-zone,
+.widget-mobile-drag-indicator {
+  display: none;
+}
+
 .widget:hover {
   transform: translateY(-2px);
 }
@@ -1375,7 +1380,7 @@
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
-    padding: 72px 14px 100px;
+    padding: 72px 14px 14px;
     overflow: visible;
   }
 
@@ -1389,6 +1394,59 @@
     padding: 14px;
     cursor: default;
     transform: none !important;
+  }
+
+  .widget-mobile-drag-zone {
+    position: absolute;
+    top: 0;
+    z-index: 4;
+    display: block;
+    width: 56px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .widget-mobile-drag-zone-left {
+    left: 0;
+  }
+
+  .widget-mobile-drag-zone-right {
+    right: 0;
+  }
+
+  .widget-mobile-drag-indicator {
+    position: absolute;
+    top: 4px;
+    right: 50%;
+    z-index: 5;
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    background: var(--lp-surface-raised);
+    color: var(--dashboard-accent);
+    font-size: 0.62rem;
+    pointer-events: none;
+    transform: translateX(50%);
+    white-space: nowrap;
+  }
+
+  .widget.mobile-widget-dragging {
+    z-index: 10;
+    opacity: 0.72;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+
+  .widget.mobile-widget-drop-target {
+    outline: 2px solid var(--dashboard-accent);
+    outline-offset: 2px;
   }
 
   .widget.widget-docked {
@@ -1420,8 +1478,31 @@
     position: relative;
     right: auto;
     bottom: auto;
-    padding: 0 14px 18px;
+    margin-bottom: 0;
+    padding: 0 14px;
     text-align: center;
+  }
+
+  .bottomAmbient {
+    position: relative;
+    inset: auto;
+    height: auto;
+    margin: 14px auto 0;
+    pointer-events: auto;
+  }
+
+  .minimized-widget-dock:not(.minimized-widget-dock-embedded) {
+    position: relative;
+    inset: auto;
+    margin: 14px auto 0;
+    transform: none;
+  }
+
+  .ambient-strip {
+    position: relative;
+    inset: auto;
+    margin: 0 auto;
+    transform: none;
   }
 
   .digital-pet-anchor {
@@ -1551,6 +1632,15 @@
 
   .minimized-widget-dock-right {
     right: 8px;
+  }
+
+  .minimized-widget-dock:not(.minimized-widget-dock-embedded) {
+    inset: auto;
+  }
+
+  .ambient-strip {
+    bottom: auto;
+    left: auto;
   }
 
   .dashboard-attribution {
