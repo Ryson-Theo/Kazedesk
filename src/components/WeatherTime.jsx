@@ -74,6 +74,7 @@ export default function WeatherTime({ animationEnabled = true }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nightArc, setNightArc] = useState(null);
   const [markersPositioned, setMarkersPositioned] = useState(false);
+  const markersInitializedRef = useRef(false);
   const skySceneRef = useRef(null);
   const celestialMarkerRef = useRef(null);
   const weatherMarkerRef = useRef(null);
@@ -92,12 +93,12 @@ export default function WeatherTime({ animationEnabled = true }) {
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(new Date());
-    const now = new Date();
-    const firstUpdateDelay = 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+    const updateInterval = 15_000;
+    const firstUpdateDelay = updateInterval - (Date.now() % updateInterval);
     let interval;
     const initialTimeout = setTimeout(() => {
       updateTime();
-      interval = setInterval(updateTime, 60_000);
+      interval = setInterval(updateTime, updateInterval);
     }, firstUpdateDelay);
     const handleVisibilityChange = () => {
       if (!document.hidden) updateTime();
@@ -254,7 +255,7 @@ export default function WeatherTime({ animationEnabled = true }) {
 
   function getIcon(code, size = 26, className = "apple-icon") {
     if (code === 0) return <Sun className={`${className} sunny`} size={size} />;
-    if ([1, 2, 3].includes(code)) return <Cloud className={`${className} cloudy`} size={size} />;
+    if ([2, 3].includes(code)) return <Cloud className={`${className} cloudy`} size={size} />;
     if ([45, 48].includes(code)) return <CloudFog className={`${className} fog`} size={size} />;
     if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code))
       return <CloudRain className={`${className} rain`} size={size} />;
@@ -302,12 +303,14 @@ export default function WeatherTime({ animationEnabled = true }) {
   useLayoutEffect(() => {
     if (!animationEnabled) {
       setNightArc(null);
+      markersInitializedRef.current = false;
       setMarkersPositioned(false);
       return undefined;
     }
 
     let previousSceneSize = null;
     let resizeFrame = null;
+    let positioningFrame = null;
     const updateMarkerPositions = () => {
       const scene = skySceneRef.current;
       const sceneRect = scene?.getBoundingClientRect();
@@ -338,7 +341,13 @@ export default function WeatherTime({ animationEnabled = true }) {
 
       [
         [celestialMarkerRef.current, markerPositionsRef.current.celestial],
-        [weatherMarkerRef.current, markerPositionsRef.current.weather]
+        [
+          weatherMarkerRef.current,
+          {
+            ...markerPositionsRef.current.weather,
+            y: markerPositionsRef.current.weather.y + (32 / sceneRect.height) * 100
+          }
+        ]
       ].forEach(([marker, position]) => {
         if (!marker) return;
         const markerRect = marker.getBoundingClientRect();
@@ -354,7 +363,14 @@ export default function WeatherTime({ animationEnabled = true }) {
         marker.style.top = `${clamped.y}px`;
       });
 
-      setMarkersPositioned(true);
+      if (!markersInitializedRef.current && positioningFrame === null) {
+        positioningFrame = requestAnimationFrame(() => {
+          positioningFrame = requestAnimationFrame(() => {
+            markersInitializedRef.current = true;
+            setMarkersPositioned(true);
+          });
+        });
+      }
     };
 
     const updateArc = () => {
@@ -395,6 +411,7 @@ export default function WeatherTime({ animationEnabled = true }) {
     return () => {
       observer?.disconnect();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      if (positioningFrame !== null) cancelAnimationFrame(positioningFrame);
       window.removeEventListener("resize", updateArc);
     };
   }, [
@@ -458,7 +475,7 @@ export default function WeatherTime({ animationEnabled = true }) {
               ref={weatherMarkerRef}
               className={`apple-sky-marker apple-sky-weather${markersPositioned ? " is-positioned" : ""}`}
             >
-              {weatherCode !== null && weatherCode !== undefined && weatherCode !== 0 &&
+              {weatherCode !== null && weatherCode !== undefined && weatherCode > 1 &&
                 getIcon(weatherCode, 30, "apple-sky-weather-icon")}
               <span ref={temperatureRef} className="apple-sky-temperature">
                 {weather && weather.temp !== null ? `${Math.round(weather.temp)}°` : "--°"}
