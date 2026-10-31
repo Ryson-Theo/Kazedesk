@@ -40,6 +40,16 @@ describe("WeatherTime", () => {
     expect(midnight.progress).toBeLessThan(moonset.progress);
   });
 
+  it("calculates fractional local time so sky positions can move smoothly", () => {
+    const start = getSkyPosition(new Date("2024-01-01T06:00:00Z"), "UTC");
+    const later = getSkyPosition(new Date("2024-01-01T06:00:15Z"), "UTC");
+    const weatherStart = getWeatherPosition(new Date("2024-01-01T06:00:00Z"), "UTC");
+    const weatherLater = getWeatherPosition(new Date("2024-01-01T06:00:15Z"), "UTC");
+
+    expect(later.x).toBeGreaterThan(start.x);
+    expect(weatherLater.x).toBeGreaterThan(weatherStart.x);
+  });
+
   it("uses the location's sunrise and sunset times for the sky phase", () => {
     const solarTimes = {
       sunrise: "2024-01-01T07:15",
@@ -127,6 +137,31 @@ describe("WeatherTime", () => {
           apparent_temperature: 17,
           relative_humidity_2m: 62,
           weather_code: 0
+        },
+        daily: {
+          sunrise: ["2024-01-01T06:00", "2024-01-02T06:01"],
+          sunset: ["2024-01-01T18:00", "2024-01-02T18:00"]
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<WeatherTime />);
+
+    expect(await screen.findByText("18°")).toBeInTheDocument();
+    expect(document.querySelector(".apple-sky-weather-icon")).not.toBeInTheDocument();
+  });
+
+  it("does not show a sun icon for mainly clear weather", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        results: [{ name: "Tokyo", latitude: 35.6762, longitude: 139.6503 }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        current: {
+          temperature_2m: 18,
+          apparent_temperature: 17,
+          relative_humidity_2m: 62,
+          weather_code: 1
         },
         daily: {
           sunrise: ["2024-01-01T06:00", "2024-01-02T06:01"],

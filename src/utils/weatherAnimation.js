@@ -31,11 +31,13 @@ function getLocalMinutes(date, timezone) {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23"
   }).formatToParts(date);
   const hour = Number(parts.find((part) => part.type === "hour")?.value);
   const minute = Number(parts.find((part) => part.type === "minute")?.value);
-  return hour * 60 + minute;
+  const second = Number(parts.find((part) => part.type === "second")?.value);
+  return hour * 60 + minute + second / 60;
 }
 
 function getSolarMinutes(value, fallback) {
