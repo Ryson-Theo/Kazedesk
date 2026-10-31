@@ -178,6 +178,17 @@
 
 .note-wall-primary-action:disabled { cursor: not-allowed; opacity: 0.45; }
 
+.note-wall-file-input { display: none; }
+
+.note-wall-attachment-status {
+  max-width: 290px;
+  color: var(--lp-muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.note-wall-attachment-status:empty { display: none; }
+
 .note-wall-tool-toggle,
 .note-wall-undo-redo button {
   display: inline-flex;
@@ -583,6 +594,8 @@
 
 .note-wall-card:hover .note-wall-connect-handle,
 .note-wall-card:focus-within .note-wall-connect-handle,
+.note-wall-attachment:hover .note-wall-connect-handle,
+.note-wall-attachment:focus-within .note-wall-connect-handle,
 .note-wall-connect-handle:focus-visible { opacity: 1; }
 
 .note-wall-connect-handle:hover { transform: scale(1.2); background: var(--lp-accent); }
@@ -603,6 +616,87 @@
   cursor: nwse-resize;
   touch-action: none;
 }
+
+.note-wall-attachment {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  min-width: 200px;
+  min-height: 170px;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 10px;
+  background: var(--lp-surface-raised);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+  color: var(--lp-text);
+  touch-action: none;
+}
+
+.note-wall-attachment:focus-within { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
+
+.note-wall-attachment-move {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 2.2rem 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--lp-muted);
+  font: inherit;
+  font-size: 0.65rem;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.note-wall-attachment-move:active { cursor: grabbing; }
+.note-wall-attachment-move > span:first-child { flex: 0 0 auto; font-size: 1rem; line-height: 0.8; }
+.note-wall-attachment-name { overflow: hidden; color: var(--lp-text); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
+.note-wall-attachment-remove {
+  position: absolute;
+  z-index: 3;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid var(--lp-line);
+  border-radius: 6px;
+  background: var(--lp-surface);
+  color: var(--lp-muted);
+  cursor: pointer;
+}
+
+.note-wall-attachment-remove:hover { border-color: #ef4444; color: #ef4444; }
+.note-wall-attachment > .note-wall-unlink { z-index: 3; right: 2.3rem; }
+
+.note-wall-attachment-preview {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--lp-bg);
+}
+
+.note-wall-attachment-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+.note-wall-attachment-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+.note-wall-attachment-preview audio { width: calc(100% - 1rem); max-width: 100%; }
+.note-wall-attachment-preview p { max-width: 100%; margin: 0; padding: 0.65rem; color: var(--lp-muted); font-size: 0.65rem; overflow-wrap: anywhere; }
+.note-wall-attachment button:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
 
 .note-wall-task {
   position: absolute;
@@ -724,8 +818,12 @@
 .note-wall-tidy-dialog { width: min(480px, 100%); }
 .note-wall-tidy-dialog h2 { margin: 0 2rem 0.5rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; font-weight: 400; }
 .note-wall-tidy-dialog p { color: var(--lp-muted); font-size: 0.78rem; }
+.note-wall-delete-dialog { width: min(440px, 100%); }
+.note-wall-delete-dialog h2 { margin: 0 2rem 0.5rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; font-weight: 400; }
+.note-wall-delete-dialog p { color: var(--lp-muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .note-wall-tidy-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 .note-wall-clear-tidy,
+.note-wall-delete-confirm,
 .note-wall-cancel-tidy {
   min-height: 36px;
   padding: 0.4rem 0.7rem;
@@ -739,6 +837,8 @@
 }
 .note-wall-clear-tidy { border-color: #b45353; color: #ef9898; }
 .note-wall-clear-tidy:hover { background: #762f35; color: #fff; }
+.note-wall-delete-confirm { border-color: #b45353; background: #762f35; color: #fff; }
+.note-wall-delete-confirm:hover { background: #943b43; }
 .note-wall-cancel-tidy:hover { border-color: var(--lp-accent); }
 
 .note-wall-modal h2 { margin: 0 2rem 1rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.7rem; font-weight: 400; }
@@ -762,6 +862,7 @@
 @media (max-width: 900px) {
   .note-wall-toolbar { align-items: flex-start; flex-direction: column; padding: 0.9rem 1rem; }
   .note-wall-controls { padding: 0.65rem 1rem 0.55rem; }
+  .note-wall-attachment-status { max-width: 100%; }
   .note-wall-drive-help { text-align: left; }
   .note-wall-board-actions { margin-left: 0; }
   .note-wall-connection-panel { left: 0; width: min(760px, calc(100vw - 2rem)); }
@@ -782,7 +883,7 @@
   @page { size: landscape; margin: 10mm; }
   html, body, #root { width: 100%; height: auto; overflow: visible !important; background: #fff !important; }
   .note-wall-page { display: block; height: auto; overflow: visible; background: #fff; color: #111827; }
-  .note-wall-toolbar, .note-wall-controls, .note-wall-footer, .note-wall-drag-handle, .note-wall-unlink, .note-wall-connect-handle, .note-wall-resize-handle, .note-wall-task-move, .note-wall-task-connect, .note-wall-task-details, .note-wall-modal-backdrop { display: none !important; }
+  .note-wall-toolbar, .note-wall-controls, .note-wall-footer, .note-wall-drag-handle, .note-wall-attachment-move, .note-wall-attachment-remove, .note-wall-unlink, .note-wall-connect-handle, .note-wall-resize-handle, .note-wall-task-move, .note-wall-task-connect, .note-wall-task-details, .note-wall-modal-backdrop { display: none !important; }
   .note-wall-scroll { overflow: visible; background: #fff; }
   .note-wall-board { min-width: 0; min-height: 0; transform: scale(var(--wall-print-scale)); transform-origin: top left; }
   .note-wall-connections { print-color-adjust: exact; }

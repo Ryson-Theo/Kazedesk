@@ -62,7 +62,7 @@ export const storageManager = {
   },
   getNoteWall: () => {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTE_WALL);
-    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [] };
+    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [] };
     try {
       const wall = JSON.parse(saved);
       return {
@@ -70,9 +70,10 @@ export const storageManager = {
         sizes: wall?.sizes && typeof wall.sizes === 'object' ? wall.sizes : {},
         taskPositions: wall?.taskPositions && typeof wall.taskPositions === 'object' ? wall.taskPositions : {},
         connections: Array.isArray(wall?.connections) ? wall.connections : [],
+        attachments: Array.isArray(wall?.attachments) ? wall.attachments : [],
       };
     } catch {
-      return { positions: {}, sizes: {}, taskPositions: {}, connections: [] };
+      return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [] };
     }
   },
   saveNoteCategories: (categories) => {

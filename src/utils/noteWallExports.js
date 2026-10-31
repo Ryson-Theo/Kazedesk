@@ -42,7 +42,7 @@ export function exportWallJSON(notes, categories, wall) {
   return data;
 }
 
-export function exportWallMarkdown(notes) {
+export function exportWallMarkdown(notes, attachments = []) {
   const grouped = new Map();
   notes.forEach((note) => {
     const category = note.category || 'Inbox';
@@ -59,6 +59,13 @@ export function exportWallMarkdown(notes) {
       lines.push(getNotePlainText(note) || '_No note text._', '');
     });
   });
+  if (attachments.length) {
+    lines.push('## Attachments', '');
+    attachments.forEach((attachment) => lines.push(
+      `- ${attachment.name} (${attachment.mediaType}; ${attachment.mimeType})`,
+    ));
+    lines.push('', 'Attachment contents remain stored in this browser and are not included in this Markdown file.', '');
+  }
   downloadBlob(new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }), 'kazedesk-note-wall.md');
 }
 
@@ -112,7 +119,7 @@ function getConnectionSvgPath(start, end, fromAnchor, toAnchor, curved) {
   return `M ${start.x} ${start.y} C ${start.x + from.x * distance} ${start.y + from.y * distance}, ${end.x + to.x * distance} ${end.y + to.y * distance}, ${end.x} ${end.y}`;
 }
 
-export async function exportWallPNG(notes, wall, tasks = []) {
+export async function exportWallPNG(notes, wall, tasks = [], attachments = [], attachmentUrls = {}) {
   const positions = wall.positions || {};
   const taskPositions = wall.taskPositions || {};
   const sizes = wall.sizes || {};
@@ -120,22 +127,28 @@ export async function exportWallPNG(notes, wall, tasks = []) {
     const type = connection[`${side}Type`] || 'note';
     return type === 'task'
       ? tasks.some((task) => String(task.id) === String(connection[side]))
-      : notes.some((note) => String(note.id) === String(connection[side]));
+      : type === 'attachment'
+        ? attachments.some((attachment) => String(attachment.id) === String(connection[side]))
+        : notes.some((note) => String(note.id) === String(connection[side]));
   };
   const connections = (wall.connections || []).filter((connection) => endpointExists(connection, 'from') && endpointExists(connection, 'to'));
   const width = Math.max(1100,
     ...notes.map((note) => (positions[note.id]?.x || 0) + (sizes[note.id]?.width || 250) + 40),
+    ...attachments.map((attachment) => (positions[attachment.id]?.x || 0) + (sizes[attachment.id]?.width || 300) + 40),
     ...tasks.map((task) => (taskPositions[task.id]?.x || 0) + 190));
   const height = Math.max(720,
     ...notes.map((note) => (positions[note.id]?.y || 0) + (sizes[note.id]?.height || 190) + 40),
+    ...attachments.map((attachment) => (positions[attachment.id]?.y || 0) + (sizes[attachment.id]?.height || 250) + 40),
     ...tasks.map((task) => (taskPositions[task.id]?.y || 0) + 60));
   const links = connections.map((connection) => {
     const fromIsTask = connection.fromType === 'task';
     const toIsTask = connection.toType === 'task';
     const from = (fromIsTask ? taskPositions : positions)[connection.from] || { x: 40, y: 40 };
     const to = (toIsTask ? taskPositions : positions)[connection.to] || { x: 40, y: 40 };
-    const fromSize = fromIsTask ? { width: 180, height: 42 } : sizes[connection.from] || { width: 250, height: 190 };
-    const toSize = toIsTask ? { width: 180, height: 42 } : sizes[connection.to] || { width: 250, height: 190 };
+    const fromIsAttachment = connection.fromType === 'attachment';
+    const toIsAttachment = connection.toType === 'attachment';
+    const fromSize = fromIsTask ? { width: 180, height: 42 } : sizes[connection.from] || (fromIsAttachment ? { width: 300, height: 250 } : { width: 250, height: 190 });
+    const toSize = toIsTask ? { width: 180, height: 42 } : sizes[connection.to] || (toIsAttachment ? { width: 300, height: 250 } : { width: 250, height: 190 });
     const dash = connection.style === 'dotted' ? ' stroke-dasharray="3 9"' : connection.style === 'dashed' ? ' stroke-dasharray="12 8"' : '';
     const start = getConnectionAnchor(from, fromSize, connection.fromAnchor);
     const end = getConnectionAnchor(to, toSize, connection.toAnchor);
@@ -163,7 +176,16 @@ export async function exportWallPNG(notes, wall, tasks = []) {
     const status = task.completed ? 'Complete' : 'Open';
     return `<g transform="translate(${position.x} ${position.y})"><rect width="180" height="42" rx="8" fill="#f8fafc" stroke="#475569" stroke-width="2"/><text x="10" y="17" font-family="Arial,sans-serif" font-size="10" fill="#475569">${category}</text><text x="10" y="33" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#0f172a">${title} · ${status}</text></g>`;
   }).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#111827"/>${links}${cards}${taskCards}</svg>`;
+  const attachmentCards = attachments.map((attachment) => {
+    const position = positions[attachment.id] || { x: 40, y: 40 };
+    const dimensions = sizes[attachment.id] || { width: 300, height: 250 };
+    const title = escapeXml(attachment.name);
+    const image = attachment.mediaType === 'image' && attachmentUrls[attachment.id]
+      ? `<image href="${escapeXml(attachmentUrls[attachment.id])}" x="8" y="38" width="${dimensions.width - 16}" height="${dimensions.height - 46}" preserveAspectRatio="xMidYMid meet"/>`
+      : `<text x="12" y="72" font-family="Arial,sans-serif" font-size="14" fill="#cbd5e1">${escapeXml(attachment.mediaType.toUpperCase())} attachment</text>`;
+    return `<g transform="translate(${position.x} ${position.y})"><rect width="${dimensions.width}" height="${dimensions.height}" rx="10" fill="#1e293b" stroke="#64748b"/><text x="12" y="25" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#f8fafc">${title}</text>${image}</g>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#111827"/>${links}${cards}${taskCards}${attachmentCards}</svg>`;
   const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const image = new Image();

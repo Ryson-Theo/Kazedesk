@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, Download, Eye, EyeOff, FileJson2, FileText, Hand, Link2, Moon, Printer, Redo2, Save, StickyNote, Sun, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, Download, Eye, EyeOff, FileJson2, FilePlus2, FileText, Hand, Link2, Moon, Printer, Redo2, Save, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { storageManager } from '../utils/localStorage';
 import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
 import { tidyWallLayout } from '../utils/noteWallLayout';
 import { addRelatedWallConnections, getWallRelationColor } from '../utils/noteWallRelations';
 import { recolorIntersectingConnections } from '../utils/noteWallIntersections';
+import { getWallAttachment, MAX_WALL_ATTACHMENT_SIZE, pruneWallAttachments, saveWallAttachment, validateWallAttachment } from '../utils/noteWallMedia';
 import '../styles/NoteWall.css';
 
 const GOOGLE_DRIVE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -26,6 +27,46 @@ const ANCHOR_DIRECTIONS = {
   bottom: { x: 0, y: 1 },
   left: { x: -1, y: 0 },
 };
+const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
+
+function getNextAttachmentPosition(wall, notes, tasks) {
+  const occupied = [
+    ...notes.map((note) => ({
+      position: wall.positions[note.id] || { x: 30, y: 30 },
+      size: wall.sizes?.[note.id] || { width: CARD_WIDTH, height: CARD_HEIGHT },
+    })),
+    ...(wall.attachments || []).map((attachment) => ({
+      position: wall.positions[attachment.id] || { x: 30, y: 30 },
+      size: wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE,
+    })),
+    ...tasks.map((task) => ({ position: wall.taskPositions?.[task.id] || { x: 900, y: 42 }, size: { width: 180, height: 42 } })),
+  ];
+  let index = occupied.length;
+  let candidate;
+  do {
+    candidate = { x: 38 + (index % 3) * 330, y: 42 + Math.floor(index / 3) * 275 };
+    index += 1;
+  } while (occupied.some(({ position, size }) =>
+    candidate.x < position.x + size.width + 24 && candidate.x + DEFAULT_ATTACHMENT_SIZE.width + 24 > position.x
+    && candidate.y < position.y + size.height + 24 && candidate.y + DEFAULT_ATTACHMENT_SIZE.height + 24 > position.y));
+  return candidate;
+}
+
+function withoutWallAttachment(wall, id) {
+  const positions = { ...wall.positions };
+  const sizes = { ...wall.sizes };
+  delete positions[id];
+  delete sizes[id];
+  return {
+    ...wall,
+    attachments: (wall.attachments || []).filter((item) => item.id !== id),
+    positions,
+    sizes,
+    connections: wall.connections.filter((connection) =>
+      !((connection.fromType === 'attachment' && connection.from === id)
+        || (connection.toType === 'attachment' && connection.to === id))),
+  };
+}
 
 function getAnchorPoint(position, dimensions, anchor = 'auto') {
   if (anchor === 'auto') return { x: position.x + dimensions.width / 2, y: position.y + dimensions.height / 2 };
@@ -135,6 +176,11 @@ export default function NoteWall() {
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [driveStatus, setDriveStatus] = useState('');
   const [wallSaveStatus, setWallSaveStatus] = useState('Changes save automatically in this browser');
+  const [attachmentStatus, setAttachmentStatus] = useState('');
+  const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
+  const [attachmentUrls, setAttachmentUrls] = useState({});
+  const [attachmentErrors, setAttachmentErrors] = useState({});
+  const [isAddingAttachment, setIsAddingAttachment] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printScale, setPrintScale] = useState(1);
   const [theme, setTheme] = useState(() => localStorage.getItem('kazedesk-landing-theme') === 'light' ? 'light' : 'dark');
@@ -145,6 +191,7 @@ export default function NoteWall() {
   const [hideOrphanTasks, setHideOrphanTasks] = useState(false);
   const [connectionPreview, setConnectionPreview] = useState(null);
   const boardRef = useRef(null);
+  const attachmentInputRef = useRef(null);
   const connectionPanelRef = useRef(null);
   const gestureRef = useRef(null);
   const nextSaveMessageRef = useRef('');
@@ -203,6 +250,11 @@ export default function NoteWall() {
 
   useEffect(() => () => window.clearTimeout(wallHistoryRef.current.timer), []);
 
+  useEffect(() => {
+    pruneWallAttachments(() => (wallRef.current.attachments || []).map((attachment) => attachment.id))
+      .catch((error) => setAttachmentStatus(error.message || 'Could not clean up removed attachments.'));
+  }, []);
+
   useLayoutEffect(() => {
     localStorage.setItem('kazedesk_note_wall_visited', 'true');
     window.dispatchEvent(new Event('kazedesk-note-wall-visited'));
@@ -234,7 +286,8 @@ export default function NoteWall() {
         }
       });
       Object.keys(positions).forEach((id) => {
-        if (!notes.some((note) => String(note.id) === String(id))) {
+        if (!notes.some((note) => String(note.id) === String(id))
+          && !(previous.attachments || []).some((attachment) => String(attachment.id) === String(id))) {
           delete positions[id];
           changed = true;
         }
@@ -257,7 +310,9 @@ export default function NoteWall() {
         const id = connection[side];
         return type === 'task'
           ? tasks.some((task) => String(task.id) === String(id))
-          : notes.some((note) => String(note.id) === String(id));
+          : type === 'attachment'
+            ? (previous.attachments || []).some((attachment) => String(attachment.id) === String(id))
+            : notes.some((note) => String(note.id) === String(id));
       };
       const connections = previous.connections.filter((connection) => hasEndpoint(connection, 'from') && hasEndpoint(connection, 'to'));
       if (connections.length !== previous.connections.length) changed = true;
@@ -275,6 +330,37 @@ export default function NoteWall() {
       nextSaveMessageRef.current = '';
     }
   }, [wall]);
+
+  useEffect(() => {
+    let active = true;
+    const objectUrls = [];
+    const loadAttachments = async () => {
+      const urls = {};
+      const errors = {};
+      await Promise.all((wall.attachments || []).map(async (attachment) => {
+        try {
+          const blob = await getWallAttachment(attachment.id);
+          if (!active) return;
+          urls[attachment.id] = URL.createObjectURL(blob);
+          objectUrls.push(urls[attachment.id]);
+        } catch (error) {
+          errors[attachment.id] = error.message || 'Could not load this attachment.';
+        }
+      }));
+      if (active) {
+        setAttachmentUrls(urls);
+        setAttachmentErrors(errors);
+        if (Object.keys(errors).length) {
+          setAttachmentStatus('Some attachments could not be loaded from browser storage.');
+        }
+      }
+    };
+    loadAttachments();
+    return () => {
+      active = false;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [wall.attachments]);
 
   useEffect(() => {
     const connections = recolorIntersectingConnections(wall.connections, notes, tasks, wall, theme);
@@ -299,19 +385,25 @@ export default function NoteWall() {
     if (groupFilter.startsWith('folder:')) return eligibleTasks.filter((task) => (task.category || 'Inbox') === groupFilter.slice(7));
     return groupFilter.startsWith('tag:') ? [] : eligibleTasks;
   }, [groupFilter, hideOrphanTasks, tasks]);
+  const visibleAttachments = useMemo(
+    () => (wall.attachments || []).filter(() => groupFilter === 'all' || groupFilter === 'folder:Inbox'),
+    [groupFilter, wall.attachments],
+  );
   const visibleEndpoint = (connection, side) => {
     const type = connection[`${side}Type`] || 'note';
     const id = String(connection[side]);
     return type === 'task'
       ? visibleTasks.some((task) => String(task.id) === id)
-      : visibleNotes.some((note) => String(note.id) === id);
+      : type === 'attachment'
+        ? visibleAttachments.some((attachment) => String(attachment.id) === id)
+        : visibleNotes.some((note) => String(note.id) === id);
   };
   const visibleConnections = wall.connections.filter((connection) => visibleEndpoint(connection, 'from') && visibleEndpoint(connection, 'to'));
   const selectedConnection = wall.connections.find((connection) => connection.id === selectedConnectionId);
   const selectedCard = notes.find((note) => String(note.id) === String(selectedCardId));
-  const boardSize = visibleNotes.reduce((size, note) => {
+  const boardSize = [...visibleNotes, ...visibleAttachments].reduce((size, note) => {
     const position = wall.positions[note.id] || { x: 30, y: 30 };
-    const dimensions = wall.sizes?.[note.id] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+    const dimensions = wall.sizes?.[note.id] || (note.mediaType ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
     return {
       width: Math.max(size.width, position.x + dimensions.width + 100),
       height: Math.max(size.height, position.y + dimensions.height + 100),
@@ -321,6 +413,51 @@ export default function NoteWall() {
     const position = wall.taskPositions?.[task.id] || { x: 900, y: 42 };
     return { width: Math.max(size.width, position.x + 190), height: Math.max(size.height, position.y + 90) };
   }, boardSize);
+
+  const handleAttachmentSelection = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setIsAddingAttachment(true);
+    setAttachmentStatus(`Adding ${file.name}…`);
+    try {
+      const { mimeType, mediaType } = validateWallAttachment(file);
+      const id = crypto.randomUUID();
+      await saveWallAttachment(id, file);
+      const attachment = { id, name: file.name, mimeType, mediaType, size: file.size, category: 'Inbox' };
+      setWall((current) => ({
+        ...current,
+        attachments: [...(current.attachments || []), attachment],
+        positions: { ...current.positions, [id]: getNextAttachmentPosition(current, notes, tasks) },
+        sizes: { ...current.sizes, [id]: DEFAULT_ATTACHMENT_SIZE },
+      }));
+      setAttachmentStatus(`${file.name} added to the wall.`);
+    } catch (error) {
+      setAttachmentStatus(error.message || 'Could not add this attachment.');
+    } finally {
+      setIsAddingAttachment(false);
+    }
+  };
+
+  const removeAttachment = async (attachment) => {
+    setPendingDeleteAttachment(attachment);
+  };
+
+  const confirmRemoveAttachment = () => {
+    if (!pendingDeleteAttachment) return;
+    const attachment = pendingDeleteAttachment;
+    window.clearTimeout(wallHistoryRef.current.timer);
+    wallHistoryRef.current.timer = null;
+    setWall((current) => withoutWallAttachment(current, attachment.id));
+    setPendingDeleteAttachment(null);
+    setAttachmentStatus(`${attachment.name} removed from the wall. Use Undo to restore it.`);
+  };
+
+  const getEndpointLabel = (type, id) => {
+    if (type === 'task') return tasks.find((task) => String(task.id) === String(id))?.title || 'task';
+    if (type === 'attachment') return wall.attachments?.find((item) => String(item.id) === String(id))?.name || 'attachment';
+    return getWallNoteTitle(notes.find((note) => String(note.id) === String(id)) || {});
+  };
 
   useEffect(() => {
     if (!isPrinting) return undefined;
@@ -390,7 +527,9 @@ export default function NoteWall() {
           const targetNotePosition = toType === 'task'
             ? wall.taskPositions?.[to] || { x: 30, y: 30 }
             : wall.positions[to] || { x: 30, y: 30 };
-          const targetNoteSize = toType === 'task' ? { width: 180, height: 42 } : wall.sizes?.[to] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+          const targetNoteSize = toType === 'task'
+            ? { width: 180, height: 42 }
+            : wall.sizes?.[to] || (toType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
           const pointer = getBoardPoint(event);
           const fromType = gesture.nodeType || 'note';
           const task = fromType === 'task'
@@ -431,7 +570,7 @@ export default function NoteWall() {
   }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, tasks, wall.positions, wall.sizes, wall.taskPositions]);
 
   const startPan = (event) => {
-    if (!panMode || event.target.closest('.note-wall-card, .note-wall-task') || event.target.closest('button')) return;
+    if (!panMode || event.target.closest('.note-wall-card, .note-wall-attachment, .note-wall-task') || event.target.closest('button')) return;
     event.preventDefault();
     gestureRef.current = {
       type: 'pan',
@@ -481,6 +620,15 @@ export default function NoteWall() {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [selectedNote]);
+
+  useEffect(() => {
+    if (!pendingDeleteAttachment) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setPendingDeleteAttachment(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [pendingDeleteAttachment]);
 
   const addConnection = (event) => {
     event.preventDefault();
@@ -549,7 +697,7 @@ export default function NoteWall() {
   };
 
   const tidyAndCenterBoard = (clearConnections = false) => {
-    if (!visibleNotes.length && !visibleTasks.length) return;
+    if (!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length) return;
     const tidyEligibleConnections = wall.connections.filter((connection) => {
       const fromIsInboxTask = (connection.fromType || 'note') === 'task'
         && (tasks.find((task) => String(task.id) === String(connection.from))?.category || 'Inbox') === 'Inbox';
@@ -561,16 +709,20 @@ export default function NoteWall() {
       ? []
       : addRelatedWallConnections(visibleNotes, visibleTasks, tidyEligibleConnections);
     const taskNodes = visibleTasks.map((task) => ({ ...task, type: 'task', wallKey: `task:${task.id}` }));
-    const layout = tidyWallLayout(visibleNotes, { ...wall, connections: sourceConnections }, taskNodes);
+    const attachmentNodes = visibleAttachments.map((attachment) => ({ ...attachment, type: 'attachment' }));
+    const layout = tidyWallLayout([...visibleNotes, ...attachmentNodes], { ...wall, connections: sourceConnections }, taskNodes);
     const contentNodes = [
       ...visibleNotes.map((note) => ({ ...note, type: 'note' })),
+      ...attachmentNodes,
       ...taskNodes,
     ];
     const contentBounds = contentNodes.reduce((bounds, node) => {
       const isTask = node.type === 'task';
       const position = isTask ? layout.taskPositions[node.id] : layout.positions[node.id];
       if (!position) return bounds;
-      const dimensions = isTask ? { width: 180, height: 42 } : wall.sizes?.[node.id] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+      const dimensions = isTask
+        ? { width: 180, height: 42 }
+        : wall.sizes?.[node.id] || (node.type === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
       return {
         left: Math.min(bounds.left, position.x),
         top: Math.min(bounds.top, position.y),
@@ -647,18 +799,18 @@ export default function NoteWall() {
       <header className="note-wall-toolbar">
         <div className="note-wall-heading">
           <Link to="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={18} /> Dashboard</Link>
-          <div><h1>Sticky note wall</h1><span>{notes.length} notes · {tasks.length} tasks · changes save in this browser</span></div>
+          <div><h1>Sticky note wall</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · changes save in this browser</span></div>
         </div>
         <div className="note-wall-export-actions">
           <button type="button" className="note-wall-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button type="button" onClick={() => exportWallPNG(visibleNotes, wall, visibleTasks).catch((error) => setDriveStatus(error.message))}><Download size={15} /> PNG</button>
+          <button type="button" onClick={() => exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls).catch((error) => setDriveStatus(error.message))}><Download size={15} /> PNG</button>
           <button type="button" onClick={() => {
             setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
             setIsPrinting(true);
           }}><Printer size={15} /> PDF</button>
-          <button type="button" onClick={() => exportWallMarkdown(notes)}><FileText size={15} /> Markdown</button>
+          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [])}><FileText size={15} /> Markdown</button>
           <button type="button" onClick={() => exportWallJSON(notes, categories, wall)}><FileJson2 size={15} /> JSON</button>
           <button type="button" onClick={saveToDrive}><Save size={15} /> Save to Drive</button>
         </div>
@@ -666,9 +818,29 @@ export default function NoteWall() {
 
       <section className="note-wall-controls" aria-label="Wall controls">
         <div className="note-wall-toolbar-main">
+          <input
+            ref={attachmentInputRef}
+            className="note-wall-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf,audio/*"
+            aria-label="Choose image, PDF, or audio attachment"
+            onChange={handleAttachmentSelection}
+          />
+          <button
+            type="button"
+            className="note-wall-primary-action"
+            onClick={() => attachmentInputRef.current?.click()}
+            disabled={isAddingAttachment}
+            title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`}
+          >
+            <FilePlus2 size={16} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
+          </button>
+          <span className="note-wall-attachment-status" role="status" aria-live="polite">
+            {attachmentStatus || `Images, PDFs, and audio · up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB`}
+          </span>
           <label className="note-wall-group-filter">Group
             <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
-              <option value="all">All notes</option>
+              <option value="all">All items</option>
               <optgroup label="Folders">
                 {categories.map((category) => <option key={category} value={`folder:${category}`}>{category}</option>)}
               </optgroup>
@@ -678,7 +850,7 @@ export default function NoteWall() {
             </select>
           </label>
           <div className="note-wall-toolbar-divider" />
-          <button type="button" className="note-wall-primary-action" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length} title="Arrange and center notes and tasks">
+          <button type="button" className="note-wall-primary-action" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length} title="Arrange and center notes, attachments, and tasks">
             <AlignCenter size={16} /> Tidy &amp; center
           </button>
           <button
@@ -699,7 +871,7 @@ export default function NoteWall() {
               <Redo2 size={15} /> Redo
             </button>
           </div>
-          {(visibleNotes.length > 0 || visibleTasks.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
+          {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
             <button type="button" className={panMode ? 'is-active' : ''} aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
               <Hand size={15} /> Move
             </button>
@@ -712,12 +884,12 @@ export default function NoteWall() {
               <ZoomIn size={15} />
             </button>
           </div>}
-          {visibleNotes.length > 0 && (
+          {(visibleNotes.length > 0 || visibleAttachments.length > 0) && (
             <details className="note-wall-connection-tools" ref={connectionPanelRef}>
               <summary><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}</summary>
               <div className="note-wall-connection-panel">
                 <div className="note-wall-connection-panel-heading">
-                  <strong>Connect notes and tasks</strong>
+                  <strong>Connect notes, attachments, and tasks</strong>
                   <span>Same-folder notes use solid lines, shared tags use dotted lines, and task-folder links use dashed lines.</span>
                 </div>
                 <form className="note-wall-link-form" onSubmit={addConnection}>
@@ -784,15 +956,16 @@ export default function NoteWall() {
           )}
         </div>
         <span className={`note-wall-drive-help${wallSaveStatus.startsWith('Could not') ? ' is-error' : ' is-saved'}`} role="status" aria-live="polite">
-          {wallSaveStatus}{driveStatus ? ` · ${driveStatus}` : GOOGLE_DRIVE_CLIENT_ID ? ' · Private Drive save available' : ' · Drive setup optional'}
+          {wallSaveStatus}{driveStatus ? ` · ${driveStatus}` : GOOGLE_DRIVE_CLIENT_ID ? ' · Private Drive save available' : ' · Drive setup optional'} · Attachment files stay in this browser and are not included in exports.
         </span>
       </section>
 
-      {visibleNotes.length === 0 && visibleTasks.length === 0 ? (
+      {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 ? (
         <div className="note-wall-empty">
           <StickyNote size={34} />
           <h2>{notes.length ? 'No notes with this tag' : 'Start with your notes'}</h2>
-          <p>{notes.length ? 'Choose a different folder or tag group.' : 'Create notes and tags on the dashboard, then arrange and connect them here.'}</p>
+          <p>{notes.length ? 'Choose a different folder or tag group.' : 'Create notes and tags on the dashboard, or add an image, PDF, or audio clip to place it on your wall.'}</p>
+          {!notes.length && <button type="button" className="note-wall-primary-action" onClick={() => attachmentInputRef.current?.click()}><FilePlus2 size={16} /> Add attachment</button>}
           <Link to="/dashboard">Go to notes</Link>
         </div>
       ) : (
@@ -800,7 +973,7 @@ export default function NoteWall() {
           <div className="note-wall-canvas" style={{ width: boardWithTasks.width * zoom, height: boardWithTasks.height * zoom }}>
             <div
               className="note-wall-board"
-              aria-label="Draggable sticky note board"
+              aria-label="Draggable note and attachment board"
               style={{ width: boardWithTasks.width, height: boardWithTasks.height, transform: `scale(${zoom})`, '--wall-print-scale': printScale }}
             >
             <svg className="note-wall-connections" role="group" aria-label="Note connections">
@@ -809,8 +982,12 @@ export default function NoteWall() {
                 const toType = connection.toType || 'note';
                 const from = fromType === 'task' ? wall.taskPositions?.[connection.from] || { x: 0, y: 0 } : wall.positions[connection.from] || { x: 0, y: 0 };
                 const to = toType === 'task' ? wall.taskPositions?.[connection.to] || { x: 0, y: 0 } : wall.positions[connection.to] || { x: 0, y: 0 };
-                const fromSize = fromType === 'task' ? { width: 180, height: 42 } : wall.sizes?.[connection.from] || { width: CARD_WIDTH, height: CARD_HEIGHT };
-                const toSize = toType === 'task' ? { width: 180, height: 42 } : wall.sizes?.[connection.to] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+                const fromSize = fromType === 'task'
+                  ? { width: 180, height: 42 }
+                  : wall.sizes?.[connection.from] || (fromType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+                const toSize = toType === 'task'
+                  ? { width: 180, height: 42 }
+                  : wall.sizes?.[connection.to] || (toType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
                 const start = getAnchorPoint(from, fromSize, connection.fromAnchor || 'right');
                 const end = getAnchorPoint(to, toSize, connection.toAnchor || 'left');
                 const path = getConnectionPath(start, end, connection.fromAnchor || 'right', connection.toAnchor || 'left', connection.curved !== false);
@@ -825,7 +1002,7 @@ export default function NoteWall() {
                       strokeDasharray={dash}
                       role="button"
                       tabIndex={0}
-                      aria-label={`Select connection from ${connection.fromType === 'task' ? tasks.find((task) => String(task.id) === String(connection.from))?.title || 'task' : getWallNoteTitle(notes.find((note) => String(note.id) === String(connection.from)) || {})} to ${connection.toType === 'task' ? tasks.find((task) => String(task.id) === String(connection.to))?.title || 'task' : getWallNoteTitle(notes.find((note) => String(note.id) === String(connection.to)) || {})}`}
+                      aria-label={`Select connection from ${getEndpointLabel(fromType, connection.from)} to ${getEndpointLabel(toType, connection.to)}`}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => { event.stopPropagation(); selectConnection(connection.id); }}
                       onKeyDown={(event) => {
@@ -841,7 +1018,9 @@ export default function NoteWall() {
               {connectionPreview && (() => {
                 const isTask = connectionPreview.fromType === 'task';
                 const from = isTask ? wall.taskPositions?.[connectionPreview.from] || { x: 0, y: 0 } : wall.positions[connectionPreview.from] || { x: 0, y: 0 };
-                const dimensions = isTask ? { width: 180, height: 42 } : wall.sizes?.[connectionPreview.from] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+                const dimensions = isTask
+                  ? { width: 180, height: 42 }
+                  : wall.sizes?.[connectionPreview.from] || (connectionPreview.fromType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
                 const start = getAnchorPoint(from, dimensions, connectionPreview.anchor);
                 return <path d={`M ${start.x} ${start.y} L ${connectionPreview.x} ${connectionPreview.y}`} stroke={connectionColor} strokeWidth="3" strokeDasharray="5 6" />;
               })()}
@@ -929,6 +1108,97 @@ export default function NoteWall() {
                 </article>
               );
             })}
+            {visibleAttachments.map((attachment) => {
+              const position = wall.positions[attachment.id] || { x: 30, y: 30 };
+              const dimensions = wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE;
+              const url = attachmentUrls[attachment.id];
+              return (
+                <article
+                  key={`attachment:${attachment.id}`}
+                  className="note-wall-attachment"
+                  data-node-id={String(attachment.id)}
+                  data-node-type="attachment"
+                  aria-label={`${attachment.mediaType} attachment: ${attachment.name}`}
+                  style={{ left: position.x, top: position.y, width: dimensions.width, height: dimensions.height }}
+                >
+                  <button
+                    type="button"
+                    className="note-wall-attachment-move"
+                    aria-label={`Move attachment ${attachment.name}`}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const point = getBoardPoint(event);
+                      gestureRef.current = { type: 'move-node', nodeType: 'attachment', id: attachment.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
+                    }}
+                  >
+                    <span aria-hidden="true">⠿</span>
+                    <span className="note-wall-attachment-name">{attachment.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="note-wall-attachment-remove"
+                    aria-label={`Remove attachment ${attachment.name}`}
+                    title="Remove attachment"
+                    onClick={() => removeAttachment(attachment)}
+                  ><Trash2 size={14} /></button>
+                  <div className="note-wall-attachment-preview">
+                    {attachmentErrors[attachment.id] ? (
+                      <p role="alert">{attachmentErrors[attachment.id]}</p>
+                    ) : !url ? (
+                      <p role="status">Loading preview…</p>
+                    ) : attachment.mediaType === 'image' ? (
+                      <img src={url} alt={attachment.name} draggable="false" />
+                    ) : attachment.mediaType === 'pdf' ? (
+                      <iframe src={url} title={`PDF preview: ${attachment.name}`} />
+                    ) : (
+                      <audio src={url} controls preload="metadata" aria-label={`Play ${attachment.name}`}>
+                        Your browser does not support audio playback.
+                      </audio>
+                    )}
+                  </div>
+                  {CONNECTION_ANCHORS.map((anchor) => (
+                    <button
+                      key={anchor}
+                      type="button"
+                      className={`note-wall-connect-handle is-${anchor}`}
+                      aria-label={`Drag from ${anchor} edge of ${attachment.name} to connect`}
+                      title={`Drag from ${anchor} edge to connect`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        gestureRef.current = { type: 'connect', nodeType: 'attachment', id: attachment.id, anchor };
+                        setConnectionPreview({ from: attachment.id, fromType: 'attachment', anchor, ...getBoardPoint(event) });
+                      }}
+                    />
+                  ))}
+                  {wall.connections.filter((connection) =>
+                    (connection.fromType === 'attachment' && String(connection.from) === String(attachment.id))
+                    || (connection.toType === 'attachment' && String(connection.to) === String(attachment.id))).map((connection) => (
+                    <button
+                      key={connection.id}
+                      type="button"
+                      className="note-wall-unlink"
+                      aria-label="Remove connection"
+                      title="Remove connection"
+                      onClick={() => setWall((current) => ({ ...current, connections: current.connections.filter((item) => item.id !== connection.id) }))}
+                    ><Unlink size={13} /></button>
+                  ))}
+                  <button
+                    type="button"
+                    className="note-wall-resize-handle"
+                    aria-label={`Resize attachment ${attachment.name}`}
+                    title="Resize attachment"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const point = getBoardPoint(event);
+                      gestureRef.current = { type: 'resize', id: attachment.id, startX: point.x, startY: point.y, width: dimensions.width, height: dimensions.height };
+                    }}
+                  />
+                </article>
+              );
+            })}
             {visibleTasks.map((task) => {
               const position = wall.taskPositions?.[task.id] || { x: 900, y: 42 };
               const category = task.category || 'Inbox';
@@ -1003,6 +1273,19 @@ export default function NoteWall() {
               <button type="button" className="note-wall-secondary-action" onClick={() => tidyAndCenterBoard(false)}>Keep lines &amp; tidy</button>
               <button type="button" className="note-wall-clear-tidy" onClick={() => tidyAndCenterBoard(true)}>Clear lines &amp; tidy</button>
               <button type="button" className="note-wall-cancel-tidy" onClick={() => setShowTidyConfirmation(false)}>Cancel</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {pendingDeleteAttachment && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setPendingDeleteAttachment(null)}>
+          <section className="note-wall-modal note-wall-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="note-wall-delete-title" aria-describedby="note-wall-delete-description" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Cancel attachment deletion" onClick={() => setPendingDeleteAttachment(null)}><X size={17} /></button>
+            <h2 id="note-wall-delete-title">Remove attachment?</h2>
+            <p id="note-wall-delete-description">Remove “{pendingDeleteAttachment.name}” from this wall? You can undo this action. The file stays in this browser while it remains available in undo history.</p>
+            <div className="note-wall-tidy-actions">
+              <button type="button" className="note-wall-delete-confirm" onClick={confirmRemoveAttachment}>Remove attachment</button>
+              <button type="button" className="note-wall-cancel-tidy" onClick={() => setPendingDeleteAttachment(null)}>Cancel</button>
             </div>
           </section>
         </div>

@@ -91,8 +91,8 @@ export function tidyWallLayout(notes, wall, extraNodes = []) {
   });
 
   return {
-    positions: Object.fromEntries(notes.map((note) => [note.id, positions[getNodeKey(note)]])),
-    taskPositions: Object.fromEntries(extraNodes.map((node) => [node.id, positions[getNodeKey(node)]])),
+    positions: Object.fromEntries(allNodes.filter((node) => node.type !== 'task').map((node) => [node.id, positions[getNodeKey(node)]])),
+    taskPositions: Object.fromEntries(extraNodes.filter((node) => node.type === 'task').map((node) => [node.id, positions[getNodeKey(node)]])),
     connections,
   };
 }
