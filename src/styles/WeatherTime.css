@@ -52,14 +52,8 @@
 .apple-sky-marker {
   position: absolute;
   transform: translate(-50%, -50%);
-}
-
-.apple-sky-marker.is-positioned {
-  transition: left 15s linear, top 15s linear;
-}
-
-.apple-sky-marker.is-positioned.is-resizing {
-  transition: none;
+  animation: none !important;
+  transition: none !important;
 }
 
 .apple-sky-celestial {
@@ -383,7 +377,7 @@
   }
 
   .apple-clock {
-    font-size: clamp(1.75rem, min(11cqw, 24cqh), 2.75rem);
+    font-size: clamp(2rem, min(15cqw, 35cqh), 3.5rem);
     letter-spacing: -0.045em;
   }
 
@@ -406,15 +400,15 @@
   }
 
   .apple-weather-meta {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: end;
-    gap: 2px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px;
     padding-top: 2px;
   }
 
   .apple-weather-meta-details {
-    justify-content: flex-start;
-    text-align: left;
+    justify-content: flex-end;
+    text-align: right;
   }
 
   .apple-feels-like {

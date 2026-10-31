@@ -149,6 +149,7 @@ describe("WeatherTime", () => {
 
     expect(await screen.findByText("18°")).toBeInTheDocument();
     expect(document.querySelector(".apple-sky-weather-icon")).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".apple-sky-marker.is-positioned")).toHaveLength(0);
   });
 
   it("does not show a sun icon for mainly clear weather", async () => {

@@ -73,8 +73,6 @@ export default function WeatherTime({ animationEnabled = true }) {
   const [weather, setWeather] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nightArc, setNightArc] = useState(null);
-  const [markersPositioned, setMarkersPositioned] = useState(false);
-  const markersInitializedRef = useRef(false);
   const skySceneRef = useRef(null);
   const celestialMarkerRef = useRef(null);
   const weatherMarkerRef = useRef(null);
@@ -303,14 +301,9 @@ export default function WeatherTime({ animationEnabled = true }) {
   useLayoutEffect(() => {
     if (!animationEnabled) {
       setNightArc(null);
-      markersInitializedRef.current = false;
-      setMarkersPositioned(false);
       return undefined;
     }
 
-    let previousSceneSize = null;
-    let resizeFrame = null;
-    let positioningFrame = null;
     const updateMarkerPositions = () => {
       const scene = skySceneRef.current;
       const sceneRect = scene?.getBoundingClientRect();
@@ -321,23 +314,6 @@ export default function WeatherTime({ animationEnabled = true }) {
       const safeTextTop = Number.isFinite(textTop)
         ? Math.max(0, textTop - sceneRect.top - 8)
         : sceneRect.height;
-
-      const sceneResized = previousSceneSize &&
-        (Math.abs(previousSceneSize.width - sceneRect.width) > 0.5 ||
-          Math.abs(previousSceneSize.height - sceneRect.height) > 0.5);
-      previousSceneSize = { width: sceneRect.width, height: sceneRect.height };
-
-      if (sceneResized) {
-        [celestialMarkerRef.current, weatherMarkerRef.current].filter(Boolean).forEach((marker) => {
-          marker.classList.add("is-resizing");
-        });
-        if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(() => {
-          [celestialMarkerRef.current, weatherMarkerRef.current].filter(Boolean).forEach((marker) => {
-            marker.classList.remove("is-resizing");
-          });
-        });
-      }
 
       [
         [celestialMarkerRef.current, markerPositionsRef.current.celestial],
@@ -362,15 +338,6 @@ export default function WeatherTime({ animationEnabled = true }) {
         marker.style.left = `${clamped.x}px`;
         marker.style.top = `${clamped.y}px`;
       });
-
-      if (!markersInitializedRef.current && positioningFrame === null) {
-        positioningFrame = requestAnimationFrame(() => {
-          positioningFrame = requestAnimationFrame(() => {
-            markersInitializedRef.current = true;
-            setMarkersPositioned(true);
-          });
-        });
-      }
     };
 
     const updateArc = () => {
@@ -410,8 +377,6 @@ export default function WeatherTime({ animationEnabled = true }) {
 
     return () => {
       observer?.disconnect();
-      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
-      if (positioningFrame !== null) cancelAnimationFrame(positioningFrame);
       window.removeEventListener("resize", updateArc);
     };
   }, [
@@ -449,31 +414,31 @@ export default function WeatherTime({ animationEnabled = true }) {
             {skyPosition.phase === "sunrise" ? (
               <Sunrise
                 ref={celestialMarkerRef}
-                className={`apple-sky-marker apple-sky-celestial apple-sky-sunrise${markersPositioned ? " is-positioned" : ""}`}
+                className="apple-sky-marker apple-sky-celestial apple-sky-sunrise"
                 size={30}
               />
             ) : skyPosition.phase === "sunset" ? (
               <Sunset
                 ref={celestialMarkerRef}
-                className={`apple-sky-marker apple-sky-celestial apple-sky-sunset${markersPositioned ? " is-positioned" : ""}`}
+                className="apple-sky-marker apple-sky-celestial apple-sky-sunset"
                 size={30}
               />
             ) : skyPosition.phase === "night" ? (
               <Moon
                 ref={celestialMarkerRef}
-                className={`apple-sky-marker apple-sky-celestial apple-sky-moon${markersPositioned ? " is-positioned" : ""}`}
+                className="apple-sky-marker apple-sky-celestial apple-sky-moon"
                 size={28}
               />
             ) : (
               <Sun
                 ref={celestialMarkerRef}
-                className={`apple-sky-marker apple-sky-celestial apple-sky-sun${markersPositioned ? " is-positioned" : ""}`}
+                className="apple-sky-marker apple-sky-celestial apple-sky-sun"
                 size={30}
               />
             )}
             <div
               ref={weatherMarkerRef}
-              className={`apple-sky-marker apple-sky-weather${markersPositioned ? " is-positioned" : ""}`}
+              className="apple-sky-marker apple-sky-weather"
             >
               {weatherCode !== null && weatherCode !== undefined && weatherCode > 1 &&
                 getIcon(weatherCode, 30, "apple-sky-weather-icon")}
