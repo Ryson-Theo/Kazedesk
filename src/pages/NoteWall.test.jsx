@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteWall from './NoteWall';
 import { storageManager } from '../utils/localStorage';
 import * as noteWallMedia from '../utils/noteWallMedia';
+import { encodeWebClipPayload } from '../utils/noteWallWebClipper';
 
 vi.mock('../utils/noteWallMedia', async (importOriginal) => {
   const actual = await importOriginal();
@@ -144,6 +145,7 @@ describe('NoteWall', () => {
       connections: [],
       attachments,
     });
+
     noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['preview']));
     let urlIndex = 0;
     const createObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
@@ -154,6 +156,49 @@ describe('NoteWall', () => {
       expect(await screen.findByTitle('PDF preview: guide.pdf')).toHaveAttribute('src', 'blob:attachment-0');
       expect(await screen.findByLabelText('Play clip.mp3')).toHaveAttribute('controls');
       expect(document.querySelector('[data-node-type="attachment"][data-node-id="audio-1"]')).toBeInTheDocument();
+    } finally {
+      if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
+      else delete URL.createObjectURL;
+    }
+  });
+
+  it('keeps discussion threads separate from note, task, and attachment content', async () => {
+    storageManager.saveTasks([{ id: 7, title: 'Review draft', category: 'Work' }]);
+    storageManager.saveNoteWall({
+      positions: { 'file-1': { x: 360, y: 30 } },
+      sizes: {},
+      taskPositions: {},
+      connections: [],
+      attachments: [{ id: 'file-1', name: 'reference.pdf', mimeType: 'application/pdf', mediaType: 'pdf', size: 12 }],
+    });
+
+    noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['pdf']));
+    const createObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:thread-pdf') });
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      const addComment = async (label, text) => {
+        fireEvent.click(await screen.findByRole('button', { name: label }));
+        fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: text } });
+        fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
+        await waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
+        fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+      };
+
+      await addComment('Open comments for Idea one (0)', 'Keep brainstorming here.');
+      await addComment('Open comments for Review draft (0)', 'Check the latest copy.');
+      await addComment('Open comments for reference.pdf (0)', 'This PDF has the relevant example.');
+
+      const savedWall = storageManager.getNoteWall();
+      expect(savedWall.comments['note:1'][0]).toMatchObject({ author: 'You', text: 'Keep brainstorming here.' });
+      expect(savedWall.comments['task:7'][0].text).toBe('Check the latest copy.');
+      expect(savedWall.comments['attachment:file-1'][0].text).toBe('This PDF has the relevant example.');
+      expect(savedWall.comments['note:2']).toBeUndefined();
+      expect(screen.getByText('First thought')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open comments for Idea one (1)' }));
+      expect(screen.getByText('Keep brainstorming here.')).toBeInTheDocument();
     } finally {
       if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
       else delete URL.createObjectURL;
@@ -180,6 +225,47 @@ describe('NoteWall', () => {
     fireEvent.pointerMove(window, { clientX: 320, clientY: 250 });
     fireEvent.pointerUp(window, { clientX: 320, clientY: 250 });
     await waitFor(() => expect(storageManager.getNoteWall().sizes['1']).toMatchObject({ width: 320, height: 250 }));
+  });
+
+  it('imports bookmarklet metadata as a saved, connected-ready web clip node', async () => {
+    const metadata = {
+      url: 'https://example.com/articles/focus',
+      title: 'Focus & Flow',
+      description: 'A practical guide.',
+      siteName: 'Example Journal',
+      image: 'https://example.com/images/focus.jpg',
+      author: 'A. Writer',
+      publishedAt: '2026-10-31',
+    };
+    const payload = encodeWebClipPayload(metadata);
+    window.history.replaceState({}, '', `/?kazedesk_clip=${payload}`);
+
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    expect(await screen.findByRole('link', { name: 'Focus & Flow' })).toHaveAttribute('href', metadata.url);
+    expect(screen.getByText('A practical guide.')).toBeInTheDocument();
+    expect(screen.getByText(/Example Journal/)).toBeInTheDocument();
+    await waitFor(() => {
+      const { webClips, positions, sizes } = storageManager.getNoteWall();
+      expect(webClips).toHaveLength(1);
+      expect(webClips[0]).toMatchObject(metadata);
+      expect(positions[webClips[0].id]).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+      expect(sizes[webClips[0].id]).toEqual({ width: 320, height: 260 });
+    });
+    expect(window.location.search).toBe('');
+    expect(screen.getByRole('button', { name: 'Open comments for Focus & Flow (0)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open comments for Focus & Flow (0)' }));
+    fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: 'Save this for the next review.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
+    await waitFor(() => expect(storageManager.getNoteWall().comments[`webclip:${storageManager.getNoteWall().webClips[0].id}`][0].text).toBe('Save this for the next review.'));
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('provides bookmarklet setup instructions with a copy control', () => {
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Web clipper' }));
+    expect(screen.getByRole('dialog', { name: 'Save pages to your wall' })).toHaveTextContent('canonical URL');
+    expect(screen.getByLabelText('Bookmarklet code').value).toContain('javascript:');
+    expect(screen.getByRole('button', { name: 'Copy bookmarklet' })).toBeEnabled();
   });
 
   it('selects and edits connection and card colors and anchors', async () => {

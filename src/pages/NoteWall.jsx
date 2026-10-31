@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, Download, Eye, EyeOff, FileJson2, FilePlus2, FileText, Hand, Link2, Moon, Printer, Redo2, Save, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, Download, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, Hand, Link2, MessageCircle, Moon, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { storageManager } from '../utils/localStorage';
 import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
 import { tidyWallLayout } from '../utils/noteWallLayout';
 import { addRelatedWallConnections, getWallRelationColor } from '../utils/noteWallRelations';
 import { recolorIntersectingConnections } from '../utils/noteWallIntersections';
 import { getWallAttachment, MAX_WALL_ATTACHMENT_SIZE, pruneWallAttachments, saveWallAttachment, validateWallAttachment } from '../utils/noteWallMedia';
+import { createWebClipperBookmarklet, decodeWebClipPayload } from '../utils/noteWallWebClipper';
 import '../styles/NoteWall.css';
 
 const GOOGLE_DRIVE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -28,6 +29,7 @@ const ANCHOR_DIRECTIONS = {
   left: { x: -1, y: 0 },
 };
 const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
+const DEFAULT_WEB_CLIP_SIZE = { width: 320, height: 260 };
 
 function getNextAttachmentPosition(wall, notes, tasks) {
   const occupied = [
@@ -38,6 +40,10 @@ function getNextAttachmentPosition(wall, notes, tasks) {
     ...(wall.attachments || []).map((attachment) => ({
       position: wall.positions[attachment.id] || { x: 30, y: 30 },
       size: wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE,
+    })),
+    ...(wall.webClips || []).map((clip) => ({
+      position: wall.positions[clip.id] || { x: 30, y: 30 },
+      size: wall.sizes?.[clip.id] || DEFAULT_WEB_CLIP_SIZE,
     })),
     ...tasks.map((task) => ({ position: wall.taskPositions?.[task.id] || { x: 900, y: 42 }, size: { width: 180, height: 42 } })),
   ];
@@ -55,13 +61,16 @@ function getNextAttachmentPosition(wall, notes, tasks) {
 function withoutWallAttachment(wall, id) {
   const positions = { ...wall.positions };
   const sizes = { ...wall.sizes };
+  const comments = { ...(wall.comments || {}) };
   delete positions[id];
   delete sizes[id];
+  delete comments[`attachment:${id}`];
   return {
     ...wall,
     attachments: (wall.attachments || []).filter((item) => item.id !== id),
     positions,
     sizes,
+    comments,
     connections: wall.connections.filter((connection) =>
       !((connection.fromType === 'attachment' && connection.from === id)
         || (connection.toType === 'attachment' && connection.to === id))),
@@ -177,7 +186,11 @@ export default function NoteWall() {
   const [driveStatus, setDriveStatus] = useState('');
   const [wallSaveStatus, setWallSaveStatus] = useState('Changes save automatically in this browser');
   const [attachmentStatus, setAttachmentStatus] = useState('');
+  const [webClipStatus, setWebClipStatus] = useState('');
   const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
+  const [showWebClipperSetup, setShowWebClipperSetup] = useState(false);
+  const [threadNode, setThreadNode] = useState(null);
+  const [threadDraft, setThreadDraft] = useState('');
   const [attachmentUrls, setAttachmentUrls] = useState({});
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
@@ -197,6 +210,11 @@ export default function NoteWall() {
   const nextSaveMessageRef = useRef('');
   const wallHistoryRef = useRef({ past: [], future: [], timer: null });
   const wallRef = useRef(wall);
+  const bookmarkletRef = useRef(null);
+  const webClipperBookmarklet = useMemo(
+    () => createWebClipperBookmarklet(`${window.location.origin}${window.location.pathname}`),
+    [],
+  );
 
   const refreshHistoryAvailability = () => {
     setCanUndo(wallHistoryRef.current.past.length > 0);
@@ -270,6 +288,27 @@ export default function NoteWall() {
   }, []);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    const payload = url.searchParams.get('kazedesk_clip');
+    if (!payload) return;
+    url.searchParams.delete('kazedesk_clip');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    try {
+      const metadata = decodeWebClipPayload(payload);
+      const clip = { id: crypto.randomUUID(), ...metadata, clippedAt: new Date().toISOString(), category: 'Inbox' };
+      setWall((current) => ({
+        ...current,
+        webClips: [...(current.webClips || []), clip],
+        positions: { ...current.positions, [clip.id]: getNextAttachmentPosition(current, notes, tasks) },
+        sizes: { ...current.sizes, [clip.id]: DEFAULT_WEB_CLIP_SIZE },
+      }));
+      setWebClipStatus(`Saved “${clip.title}” to the wall.`);
+    } catch (error) {
+      setWebClipStatus(error.message || 'Could not import this web clip.');
+    }
+  }, [notes, tasks]);
+
+  useEffect(() => {
     setWall((previous) => {
       const positions = { ...previous.positions };
       let changed = false;
@@ -287,7 +326,8 @@ export default function NoteWall() {
       });
       Object.keys(positions).forEach((id) => {
         if (!notes.some((note) => String(note.id) === String(id))
-          && !(previous.attachments || []).some((attachment) => String(attachment.id) === String(id))) {
+          && !(previous.attachments || []).some((attachment) => String(attachment.id) === String(id))
+          && !(previous.webClips || []).some((clip) => String(clip.id) === String(id))) {
           delete positions[id];
           changed = true;
         }
@@ -312,7 +352,9 @@ export default function NoteWall() {
           ? tasks.some((task) => String(task.id) === String(id))
           : type === 'attachment'
             ? (previous.attachments || []).some((attachment) => String(attachment.id) === String(id))
-            : notes.some((note) => String(note.id) === String(id));
+            : type === 'webclip'
+              ? (previous.webClips || []).some((clip) => String(clip.id) === String(id))
+              : notes.some((note) => String(note.id) === String(id));
       };
       const connections = previous.connections.filter((connection) => hasEndpoint(connection, 'from') && hasEndpoint(connection, 'to'));
       if (connections.length !== previous.connections.length) changed = true;
@@ -363,7 +405,15 @@ export default function NoteWall() {
   }, [wall.attachments]);
 
   useEffect(() => {
-    const connections = recolorIntersectingConnections(wall.connections, notes, tasks, wall, theme);
+    const connections = recolorIntersectingConnections(
+      wall.connections,
+      notes,
+      tasks,
+      wall,
+      theme,
+      wall.attachments || [],
+      wall.webClips || [],
+    );
     if (!connections.some((connection, index) => connection !== wall.connections[index])) return;
     nextSaveMessageRef.current = 'Line colors updated for crossings · saved locally';
     setWall((current) => ({ ...current, connections }), false);
@@ -389,6 +439,10 @@ export default function NoteWall() {
     () => (wall.attachments || []).filter(() => groupFilter === 'all' || groupFilter === 'folder:Inbox'),
     [groupFilter, wall.attachments],
   );
+  const visibleWebClips = useMemo(
+    () => (wall.webClips || []).filter(() => groupFilter === 'all' || groupFilter === 'folder:Inbox'),
+    [groupFilter, wall.webClips],
+  );
   const visibleEndpoint = (connection, side) => {
     const type = connection[`${side}Type`] || 'note';
     const id = String(connection[side]);
@@ -396,14 +450,17 @@ export default function NoteWall() {
       ? visibleTasks.some((task) => String(task.id) === id)
       : type === 'attachment'
         ? visibleAttachments.some((attachment) => String(attachment.id) === id)
-        : visibleNotes.some((note) => String(note.id) === id);
+        : type === 'webclip'
+          ? visibleWebClips.some((clip) => String(clip.id) === id)
+          : visibleNotes.some((note) => String(note.id) === id);
   };
   const visibleConnections = wall.connections.filter((connection) => visibleEndpoint(connection, 'from') && visibleEndpoint(connection, 'to'));
   const selectedConnection = wall.connections.find((connection) => connection.id === selectedConnectionId);
   const selectedCard = notes.find((note) => String(note.id) === String(selectedCardId));
-  const boardSize = [...visibleNotes, ...visibleAttachments].reduce((size, note) => {
+  const boardSize = [...visibleNotes, ...visibleAttachments, ...visibleWebClips].reduce((size, note) => {
     const position = wall.positions[note.id] || { x: 30, y: 30 };
-    const dimensions = wall.sizes?.[note.id] || (note.mediaType ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+    const dimensions = wall.sizes?.[note.id]
+      || (note.mediaType ? DEFAULT_ATTACHMENT_SIZE : note.url ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
     return {
       width: Math.max(size.width, position.x + dimensions.width + 100),
       height: Math.max(size.height, position.y + dimensions.height + 100),
@@ -456,8 +513,70 @@ export default function NoteWall() {
   const getEndpointLabel = (type, id) => {
     if (type === 'task') return tasks.find((task) => String(task.id) === String(id))?.title || 'task';
     if (type === 'attachment') return wall.attachments?.find((item) => String(item.id) === String(id))?.name || 'attachment';
+    if (type === 'webclip') return wall.webClips?.find((item) => String(item.id) === String(id))?.title || 'web clip';
     return getWallNoteTitle(notes.find((note) => String(note.id) === String(id)) || {});
   };
+
+  const openCommentThread = (type, id, title) => {
+    setThreadNode({ type, id: String(id), title });
+    setThreadDraft('');
+  };
+
+  const closeCommentThread = () => {
+    setThreadNode(null);
+    setThreadDraft('');
+  };
+
+  const addThreadComment = (event) => {
+    event.preventDefault();
+    const text = threadDraft.trim();
+    if (!threadNode || !text) return;
+    const key = `${threadNode.type}:${threadNode.id}`;
+    setWall((current) => ({
+      ...current,
+      comments: {
+        ...(current.comments || {}),
+        [key]: [...(current.comments?.[key] || []), {
+          id: crypto.randomUUID(),
+          author: 'You',
+          text,
+          createdAt: new Date().toISOString(),
+        }],
+      },
+    }));
+    setThreadDraft('');
+  };
+
+  const copyWebClipperBookmarklet = async () => {
+    try {
+      await navigator.clipboard.writeText(webClipperBookmarklet);
+      setWebClipStatus('Clipper copied. Add it as a browser bookmark, then click it on any article.');
+    } catch (error) {
+      bookmarkletRef.current?.focus();
+      bookmarkletRef.current?.select();
+      setWebClipStatus(`Clipboard access failed: ${error.message || 'copy the selected bookmarklet text manually.'}`);
+    }
+  };
+
+  const renderCommentButton = (type, id, title) => {
+    const count = wall.comments?.[`${type}:${id}`]?.length || 0;
+    return (
+      <button
+        type="button"
+        className="note-wall-comments-trigger"
+        aria-label={`Open comments for ${title} (${count})`}
+        title={count ? `${count} ${count === 1 ? 'comment' : 'comments'}` : 'Open comments'}
+        onClick={() => openCommentThread(type, id, title)}
+      >
+        <MessageCircle size={13} />
+        {count > 0 && <span>{count}</span>}
+      </button>
+    );
+  };
+
+  const threadComments = threadNode
+    ? wall.comments?.[`${threadNode.type}:${threadNode.id}`] || []
+    : [];
 
   useEffect(() => {
     if (!isPrinting) return undefined;
@@ -469,6 +588,15 @@ export default function NoteWall() {
       window.removeEventListener('afterprint', afterPrint);
     };
   }, [isPrinting]);
+
+  useEffect(() => {
+    if (!threadNode) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') closeCommentThread();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [threadNode]);
 
   const getBoardPoint = useCallback((event) => {
     const bounds = boardRef.current.getBoundingClientRect();
@@ -529,7 +657,9 @@ export default function NoteWall() {
             : wall.positions[to] || { x: 30, y: 30 };
           const targetNoteSize = toType === 'task'
             ? { width: 180, height: 42 }
-            : wall.sizes?.[to] || (toType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+            : wall.sizes?.[to] || (toType === 'attachment'
+              ? DEFAULT_ATTACHMENT_SIZE
+              : toType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
           const pointer = getBoardPoint(event);
           const fromType = gesture.nodeType || 'note';
           const task = fromType === 'task'
@@ -570,7 +700,7 @@ export default function NoteWall() {
   }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, tasks, wall.positions, wall.sizes, wall.taskPositions]);
 
   const startPan = (event) => {
-    if (!panMode || event.target.closest('.note-wall-card, .note-wall-attachment, .note-wall-task') || event.target.closest('button')) return;
+    if (!panMode || event.target.closest('.note-wall-card, .note-wall-attachment, .note-wall-webclip, .note-wall-task') || event.target.closest('button')) return;
     event.preventDefault();
     gestureRef.current = {
       type: 'pan',
@@ -697,7 +827,7 @@ export default function NoteWall() {
   };
 
   const tidyAndCenterBoard = (clearConnections = false) => {
-    if (!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length) return;
+    if (!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length) return;
     const tidyEligibleConnections = wall.connections.filter((connection) => {
       const fromIsInboxTask = (connection.fromType || 'note') === 'task'
         && (tasks.find((task) => String(task.id) === String(connection.from))?.category || 'Inbox') === 'Inbox';
@@ -710,10 +840,12 @@ export default function NoteWall() {
       : addRelatedWallConnections(visibleNotes, visibleTasks, tidyEligibleConnections);
     const taskNodes = visibleTasks.map((task) => ({ ...task, type: 'task', wallKey: `task:${task.id}` }));
     const attachmentNodes = visibleAttachments.map((attachment) => ({ ...attachment, type: 'attachment' }));
-    const layout = tidyWallLayout([...visibleNotes, ...attachmentNodes], { ...wall, connections: sourceConnections }, taskNodes);
+    const webClipNodes = visibleWebClips.map((clip) => ({ ...clip, type: 'webclip' }));
+    const layout = tidyWallLayout([...visibleNotes, ...attachmentNodes, ...webClipNodes], { ...wall, connections: sourceConnections }, taskNodes);
     const contentNodes = [
       ...visibleNotes.map((note) => ({ ...note, type: 'note' })),
       ...attachmentNodes,
+      ...webClipNodes,
       ...taskNodes,
     ];
     const contentBounds = contentNodes.reduce((bounds, node) => {
@@ -722,7 +854,9 @@ export default function NoteWall() {
       if (!position) return bounds;
       const dimensions = isTask
         ? { width: 180, height: 42 }
-        : wall.sizes?.[node.id] || (node.type === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+        : wall.sizes?.[node.id] || (node.type === 'attachment'
+          ? DEFAULT_ATTACHMENT_SIZE
+          : node.type === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
       return {
         left: Math.min(bounds.left, position.x),
         top: Math.min(bounds.top, position.y),
@@ -799,18 +933,18 @@ export default function NoteWall() {
       <header className="note-wall-toolbar">
         <div className="note-wall-heading">
           <Link to="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={18} /> Dashboard</Link>
-          <div><h1>Sticky note wall</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · changes save in this browser</span></div>
+          <div><h1>Sticky note wall</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · {wall.webClips?.length || 0} web clips · changes save in this browser</span></div>
         </div>
         <div className="note-wall-export-actions">
           <button type="button" className="note-wall-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button type="button" onClick={() => exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls).catch((error) => setDriveStatus(error.message))}><Download size={15} /> PNG</button>
+          <button type="button" onClick={() => exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls, visibleWebClips).catch((error) => setDriveStatus(error.message))}><Download size={15} /> PNG</button>
           <button type="button" onClick={() => {
             setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
             setIsPrinting(true);
           }}><Printer size={15} /> PDF</button>
-          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [])}><FileText size={15} /> Markdown</button>
+          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [])}><FileText size={15} /> Markdown</button>
           <button type="button" onClick={() => exportWallJSON(notes, categories, wall)}><FileJson2 size={15} /> JSON</button>
           <button type="button" onClick={saveToDrive}><Save size={15} /> Save to Drive</button>
         </div>
@@ -835,8 +969,11 @@ export default function NoteWall() {
           >
             <FilePlus2 size={16} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
           </button>
+          <button type="button" className="note-wall-secondary-action" onClick={() => setShowWebClipperSetup(true)} title="Set up the browser bookmarklet to clip pages with their metadata">
+            <Globe2 size={16} /> Web clipper
+          </button>
           <span className="note-wall-attachment-status" role="status" aria-live="polite">
-            {attachmentStatus || `Images, PDFs, and audio · up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB`}
+            {webClipStatus || attachmentStatus || `Images, PDFs, and audio · up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB`}
           </span>
           <label className="note-wall-group-filter">Group
             <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
@@ -850,7 +987,7 @@ export default function NoteWall() {
             </select>
           </label>
           <div className="note-wall-toolbar-divider" />
-          <button type="button" className="note-wall-primary-action" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length} title="Arrange and center notes, attachments, and tasks">
+          <button type="button" className="note-wall-primary-action" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length} title="Arrange and center notes, attachments, web clips, and tasks">
             <AlignCenter size={16} /> Tidy &amp; center
           </button>
           <button
@@ -871,7 +1008,7 @@ export default function NoteWall() {
               <Redo2 size={15} /> Redo
             </button>
           </div>
-          {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
+          {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
             <button type="button" className={panMode ? 'is-active' : ''} aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
               <Hand size={15} /> Move
             </button>
@@ -884,12 +1021,12 @@ export default function NoteWall() {
               <ZoomIn size={15} />
             </button>
           </div>}
-          {(visibleNotes.length > 0 || visibleAttachments.length > 0) && (
+          {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
             <details className="note-wall-connection-tools" ref={connectionPanelRef}>
               <summary><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}</summary>
               <div className="note-wall-connection-panel">
                 <div className="note-wall-connection-panel-heading">
-                  <strong>Connect notes, attachments, and tasks</strong>
+                  <strong>Connect notes, attachments, web clips, and tasks</strong>
                   <span>Same-folder notes use solid lines, shared tags use dotted lines, and task-folder links use dashed lines.</span>
                 </div>
                 <form className="note-wall-link-form" onSubmit={addConnection}>
@@ -960,7 +1097,7 @@ export default function NoteWall() {
         </span>
       </section>
 
-      {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 ? (
+      {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 ? (
         <div className="note-wall-empty">
           <StickyNote size={34} />
           <h2>{notes.length ? 'No notes with this tag' : 'Start with your notes'}</h2>
@@ -984,10 +1121,14 @@ export default function NoteWall() {
                 const to = toType === 'task' ? wall.taskPositions?.[connection.to] || { x: 0, y: 0 } : wall.positions[connection.to] || { x: 0, y: 0 };
                 const fromSize = fromType === 'task'
                   ? { width: 180, height: 42 }
-                  : wall.sizes?.[connection.from] || (fromType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+                  : wall.sizes?.[connection.from] || (fromType === 'attachment'
+                    ? DEFAULT_ATTACHMENT_SIZE
+                    : fromType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
                 const toSize = toType === 'task'
                   ? { width: 180, height: 42 }
-                  : wall.sizes?.[connection.to] || (toType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+                  : wall.sizes?.[connection.to] || (toType === 'attachment'
+                    ? DEFAULT_ATTACHMENT_SIZE
+                    : toType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
                 const start = getAnchorPoint(from, fromSize, connection.fromAnchor || 'right');
                 const end = getAnchorPoint(to, toSize, connection.toAnchor || 'left');
                 const path = getConnectionPath(start, end, connection.fromAnchor || 'right', connection.toAnchor || 'left', connection.curved !== false);
@@ -1020,7 +1161,9 @@ export default function NoteWall() {
                 const from = isTask ? wall.taskPositions?.[connectionPreview.from] || { x: 0, y: 0 } : wall.positions[connectionPreview.from] || { x: 0, y: 0 };
                 const dimensions = isTask
                   ? { width: 180, height: 42 }
-                  : wall.sizes?.[connectionPreview.from] || (connectionPreview.fromType === 'attachment' ? DEFAULT_ATTACHMENT_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+                  : wall.sizes?.[connectionPreview.from] || (connectionPreview.fromType === 'attachment'
+                    ? DEFAULT_ATTACHMENT_SIZE
+                    : connectionPreview.fromType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
                 const start = getAnchorPoint(from, dimensions, connectionPreview.anchor);
                 return <path d={`M ${start.x} ${start.y} L ${connectionPreview.x} ${connectionPreview.y}`} stroke={connectionColor} strokeWidth="3" strokeDasharray="5 6" />;
               })()}
@@ -1063,6 +1206,7 @@ export default function NoteWall() {
                     <span aria-hidden="true">⠿</span> Drag note
                   </button>
                   <button type="button" className="note-wall-open" onClick={() => { selectCard(note.id); setSelectedNote(note); }}><strong>{getWallNoteTitle(note)}</strong><Eye size={14} /></button>
+                  {renderCommentButton('note', note.id, getWallNoteTitle(note))}
                   <p>{note.text || ''}</p>
                   <div className="note-wall-card-meta">
                     <span>{note.category || 'Inbox'}</span>
@@ -1142,6 +1286,7 @@ export default function NoteWall() {
                     title="Remove attachment"
                     onClick={() => removeAttachment(attachment)}
                   ><Trash2 size={14} /></button>
+                  {renderCommentButton('attachment', attachment.id, attachment.name)}
                   <div className="note-wall-attachment-preview">
                     {attachmentErrors[attachment.id] ? (
                       <p role="alert">{attachmentErrors[attachment.id]}</p>
@@ -1199,6 +1344,83 @@ export default function NoteWall() {
                 </article>
               );
             })}
+            {visibleWebClips.map((clip) => {
+              const position = wall.positions[clip.id] || { x: 30, y: 30 };
+              const dimensions = wall.sizes?.[clip.id] || DEFAULT_WEB_CLIP_SIZE;
+              return (
+                <article
+                  key={`webclip:${clip.id}`}
+                  className="note-wall-webclip"
+                  data-node-id={String(clip.id)}
+                  data-node-type="webclip"
+                  aria-label={`Web clip: ${clip.title}`}
+                  style={{ left: position.x, top: position.y, width: dimensions.width, height: dimensions.height }}
+                >
+                  <button
+                    type="button"
+                    className="note-wall-webclip-move"
+                    aria-label={`Move web clip ${clip.title}`}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const point = getBoardPoint(event);
+                      gestureRef.current = { type: 'move-node', nodeType: 'webclip', id: clip.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
+                    }}
+                  >
+                    <span aria-hidden="true">⠿</span>
+                    <span>WEB CLIP · {clip.siteName}</span>
+                  </button>
+                  {renderCommentButton('webclip', clip.id, clip.title)}
+                  {clip.image && <img className="note-wall-webclip-image" src={clip.image} alt="" loading="lazy" />}
+                  <a className="note-wall-webclip-title" href={clip.url} target="_blank" rel="noopener noreferrer">{clip.title}</a>
+                  {clip.description && <p className="note-wall-webclip-description">{clip.description}</p>}
+                  <div className="note-wall-webclip-meta">
+                    {clip.author && <span>{clip.author}</span>}
+                    {clip.publishedAt && <span>{clip.publishedAt}</span>}
+                    <a href={clip.url} target="_blank" rel="noopener noreferrer" title={clip.url}>{new URL(clip.url).hostname}</a>
+                  </div>
+                  {CONNECTION_ANCHORS.map((anchor) => (
+                    <button
+                      key={anchor}
+                      type="button"
+                      className={`note-wall-connect-handle is-${anchor}`}
+                      aria-label={`Drag from ${anchor} edge of ${clip.title} to connect`}
+                      title={`Drag from ${anchor} edge to connect`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        gestureRef.current = { type: 'connect', nodeType: 'webclip', id: clip.id, anchor };
+                        setConnectionPreview({ from: clip.id, fromType: 'webclip', anchor, ...getBoardPoint(event) });
+                      }}
+                    />
+                  ))}
+                  {wall.connections.filter((connection) =>
+                    (connection.fromType === 'webclip' && String(connection.from) === String(clip.id))
+                    || (connection.toType === 'webclip' && String(connection.to) === String(clip.id))).map((connection) => (
+                    <button
+                      key={connection.id}
+                      type="button"
+                      className="note-wall-unlink"
+                      aria-label="Remove connection"
+                      title="Remove connection"
+                      onClick={() => setWall((current) => ({ ...current, connections: current.connections.filter((item) => item.id !== connection.id) }))}
+                    ><Unlink size={13} /></button>
+                  ))}
+                  <button
+                    type="button"
+                    className="note-wall-resize-handle"
+                    aria-label={`Resize web clip ${clip.title}`}
+                    title="Resize web clip"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const point = getBoardPoint(event);
+                      gestureRef.current = { type: 'resize', id: clip.id, startX: point.x, startY: point.y, width: dimensions.width, height: dimensions.height };
+                    }}
+                  />
+                </article>
+              );
+            })}
             {visibleTasks.map((task) => {
               const position = wall.taskPositions?.[task.id] || { x: 900, y: 42 };
               const category = task.category || 'Inbox';
@@ -1234,6 +1456,7 @@ export default function NoteWall() {
                     <span>Time: {formatTaskReminder(task.reminder)}</span>
                     <span>Priority: {priority.charAt(0).toUpperCase() + priority.slice(1)}</span>
                   </div>
+                  {renderCommentButton('task', task.id, task.title || 'Untitled task')}
                   <button
                     type="button"
                     className="note-wall-task-connect"
@@ -1251,6 +1474,74 @@ export default function NoteWall() {
             })}
             </div>
           </div>
+        </div>
+      )}
+      {threadNode && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={closeCommentThread}>
+          <section className="note-wall-modal note-wall-thread-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-thread-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close comments" onClick={closeCommentThread}><X size={17} /></button>
+            <h2 id="note-wall-thread-title">Discussion · {threadNode.title}</h2>
+            <div className="note-wall-thread-list" role="log" aria-label={`Comments on ${threadNode.title}`} aria-live="polite">
+              {threadComments.length ? threadComments.map((comment) => {
+                const timestamp = new Date(comment.createdAt);
+                return (
+                  <article className="note-wall-thread-comment" key={comment.id}>
+                    <div className="note-wall-thread-comment-meta">
+                      <strong>{comment.author || 'You'}</strong>
+                      <time dateTime={comment.createdAt}>{Number.isNaN(timestamp.getTime()) ? '' : timestamp.toLocaleString()}</time>
+                    </div>
+                    <p>{comment.text}</p>
+                  </article>
+                );
+              }) : <p className="note-wall-thread-empty">No comments yet. Start the discussion here.</p>}
+            </div>
+            <form className="note-wall-thread-form" onSubmit={addThreadComment}>
+              <label htmlFor="note-wall-thread-draft">Add a comment</label>
+              <textarea
+                id="note-wall-thread-draft"
+                value={threadDraft}
+                onChange={(event) => setThreadDraft(event.target.value)}
+                maxLength={2000}
+                rows={3}
+                placeholder="Write a comment…"
+              />
+              <div className="note-wall-thread-form-footer">
+                <span>{threadDraft.length}/2000</span>
+                <button type="submit" className="note-wall-secondary-action" disabled={!threadDraft.trim()}>
+                  <Send size={14} /> Post comment
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {showWebClipperSetup && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setShowWebClipperSetup(false)}>
+          <section className="note-wall-modal note-wall-webclipper-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-webclipper-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close web clipper setup" onClick={() => setShowWebClipperSetup(false)}><X size={17} /></button>
+            <h2 id="note-wall-webclipper-title">Save pages to your wall</h2>
+            <p>The bookmarklet reads the current page’s title, canonical URL, description, site, author, publication date, and preview image, then opens a web clip node on this wall. Metadata goes directly to this Kazedesk site; no third-party extraction service is used.</p>
+            <ol className="note-wall-webclipper-steps">
+              <li>Copy the bookmarklet below.</li>
+              <li>Create a browser bookmark and paste the copied text into its URL field.</li>
+              <li>On any page you want to save, click that bookmark. Return here to find its node.</li>
+            </ol>
+            <label className="note-wall-webclipper-code-label" htmlFor="note-wall-webclipper-code">Bookmarklet code</label>
+            <textarea
+              ref={bookmarkletRef}
+              id="note-wall-webclipper-code"
+              className="note-wall-webclipper-code"
+              readOnly
+              value={webClipperBookmarklet}
+              onFocus={(event) => event.target.select()}
+              rows={4}
+            />
+            <div className="note-wall-webclipper-actions">
+              <button type="button" className="note-wall-secondary-action" onClick={copyWebClipperBookmarklet}>Copy bookmarklet</button>
+              <button type="button" className="note-wall-cancel-tidy" onClick={() => setShowWebClipperSetup(false)}>Done</button>
+            </div>
+            <p className="note-wall-webclipper-note">Use the bookmarklet only on pages you trust. Captured metadata is stored with this wall in this browser.</p>
+          </section>
         </div>
       )}
       {selectedNote && (
@@ -1290,7 +1581,7 @@ export default function NoteWall() {
           </section>
         </div>
       )}
-      {notes.length > 0 && <footer className="note-wall-footer">{visibleNotes.length} notes · {visibleTasks.length} tasks shown · folder links are solid, tag links dotted, and task links dashed · Ctrl+scroll to zoom · Shift+scroll to move sideways</footer>}
+      {(notes.length > 0 || (wall.webClips || []).length > 0) && <footer className="note-wall-footer">{visibleNotes.length} notes · {visibleTasks.length} tasks · {visibleWebClips.length} web clips shown · folder links are solid, tag links dotted, and task links dashed · Ctrl+scroll to zoom · Shift+scroll to move sideways</footer>}
     </main>
   );
 }

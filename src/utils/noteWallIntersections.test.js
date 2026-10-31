@@ -50,4 +50,30 @@ describe('recolorIntersectingConnections', () => {
     expect(recolorIntersectingConnections(previouslyRecolored, notes, [], separatedWall, 'dark')
       .map((line) => line.color)).toEqual(['#aaaaaa', '#aaaaaa']);
   });
+
+  it('detects crossing connections that use web clip nodes', () => {
+    const webClips = [
+      { id: 'clip-left' },
+      { id: 'clip-right' },
+      { id: 'clip-top' },
+      { id: 'clip-bottom' },
+    ];
+    const clipWall = {
+      positions: {
+        'clip-left': { x: 0, y: 145 },
+        'clip-right': { x: 400, y: 145 },
+        'clip-top': { x: 200, y: 0 },
+        'clip-bottom': { x: 200, y: 300 },
+      },
+      sizes: {},
+      taskPositions: {},
+    };
+    const clipsLines = [
+      { ...crossingLines[0], from: 'clip-left', to: 'clip-right', fromType: 'webclip', toType: 'webclip' },
+      { ...crossingLines[1], from: 'clip-top', to: 'clip-bottom', fromType: 'webclip', toType: 'webclip' },
+    ];
+
+    const recolored = recolorIntersectingConnections(clipsLines, [], [], clipWall, 'dark', [], webClips);
+    expect(recolored[0].color).not.toBe(recolored[1].color);
+  });
 });

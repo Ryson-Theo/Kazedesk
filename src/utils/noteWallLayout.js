@@ -6,7 +6,10 @@ function getNodeKey(node) {
 }
 
 function getSize(node, sizes) {
-  return sizes[getNodeKey(node)] || DEFAULT_CARD_SIZE;
+  return sizes[getNodeKey(node)]
+    || (node.type === 'attachment' ? { width: 300, height: 250 } : null)
+    || (node.type === 'webclip' ? { width: 320, height: 260 } : null)
+    || DEFAULT_CARD_SIZE;
 }
 
 function getCenter(node, positions, sizes) {

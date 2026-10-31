@@ -99,7 +99,7 @@ function hash(value) {
   return Math.abs(result);
 }
 
-export function recolorIntersectingConnections(connections, notes, tasks, wall, theme) {
+export function recolorIntersectingConnections(connections, notes, tasks, wall, theme, attachments = [], webClips = []) {
   const nodes = {};
   notes.forEach((note) => {
     nodes[`note:${note.id}`] = {
@@ -111,6 +111,18 @@ export function recolorIntersectingConnections(connections, notes, tasks, wall, 
     nodes[`task:${task.id}`] = {
       position: wall.taskPositions?.[task.id] || { x: 0, y: 0 },
       size: { width: 180, height: 42 },
+    };
+  });
+  attachments.forEach((attachment) => {
+    nodes[`attachment:${attachment.id}`] = {
+      position: wall.positions?.[attachment.id] || { x: 0, y: 0 },
+      size: wall.sizes?.[attachment.id] || { width: 300, height: 250 },
+    };
+  });
+  webClips.forEach((clip) => {
+    nodes[`webclip:${clip.id}`] = {
+      position: wall.positions?.[clip.id] || { x: 0, y: 0 },
+      size: wall.sizes?.[clip.id] || { width: 320, height: 260 },
     };
   });
 
