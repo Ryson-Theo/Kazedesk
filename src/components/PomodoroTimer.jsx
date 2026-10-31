@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Play, Pause, RotateCcw, Settings, X, Circle, AlignLeft } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { Play, Pause, RotateCcw, Settings, X, Circle, AlignLeft, Clock3 } from "lucide-react";
 import { storageManager } from "../utils/localStorage";
 import "../styles/PomodoroTimer.css";
 
@@ -10,6 +10,45 @@ const SVG_SIZE = (RADIUS + SVG_PADDING) * 2;
 const SVG_CENTER = SVG_SIZE / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const DEFAULT_BREAK_MINUTES = 5;
+const PIXEL_BAR_COUNT = 56;
+const PIXEL_CIRCLE_COUNT = 72;
+
+function FlipDigit({ digit }) {
+  const [previousDigit, setPreviousDigit] = useState(digit);
+  const [flipping, setFlipping] = useState(false);
+
+  useLayoutEffect(() => {
+    if (previousDigit === digit) return undefined;
+
+    setFlipping(true);
+    const timeout = setTimeout(() => {
+      setPreviousDigit(digit);
+      setFlipping(false);
+    }, 600);
+
+    return () => clearTimeout(timeout);
+  }, [digit, previousDigit]);
+
+  return (
+    <span className="pomo-flip-digit" aria-hidden="true">
+      <span className="pomo-flip-digit-face pomo-flip-digit-top"><span>{digit}</span></span>
+      <span className="pomo-flip-digit-face pomo-flip-digit-bottom">
+        <span>{flipping ? previousDigit : digit}</span>
+      </span>
+      {flipping && (
+        <>
+          <span className="pomo-flip-digit-face pomo-flip-flap-top">
+            <span className="pomo-flip-flap-front">{previousDigit}</span>
+            <span className="pomo-flip-flap-back">{digit}</span>
+          </span>
+          <span className="pomo-flip-digit-face pomo-flip-flap-bottom">
+            <span>{digit}</span>
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
 
 async function playPhaseSound(audioContextRef, phase) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -54,6 +93,7 @@ export default function PomodoroTimer() {
   const [savedDurations] = useState(() => storageManager.getPomodoroConfig());
   const [duration, setDuration] = useState(savedDurations.duration);
   const [breakDuration, setBreakDuration] = useState(savedDurations.breakDuration || DEFAULT_BREAK_MINUTES);
+  const [progressStyle, setProgressStyle] = useState(savedDurations.progressStyle);
 
   const [customMinutes, setCustomMinutes] = useState(duration);
   const [time, setTime] = useState(duration * 60);
@@ -65,16 +105,37 @@ export default function PomodoroTimer() {
   ));
   const [showSettings, setShowSettings] = useState(false);
   const [viewMode, setViewMode] = useState("circle");
+  const [flipOrientation, setFlipOrientation] = useState("horizontal");
+  const timerRef = useRef(null);
   const audioContextRef = useRef(null);
   const activeSegmentStartedAtRef = useRef(null);
   const phaseSegmentsRef = useRef([]);
 
   useEffect(() => {
-    storageManager.savePomodoroConfig({ duration, breakDuration });
-  }, [duration, breakDuration]);
+    storageManager.savePomodoroConfig({ duration, breakDuration, progressStyle });
+  }, [duration, breakDuration, progressStyle]);
 
   useEffect(() => () => {
     audioContextRef.current?.close();
+  }, []);
+
+  useEffect(() => {
+    const widget = timerRef.current?.closest(".widget");
+    if (!widget) return;
+
+    const updateOrientation = () => {
+      setFlipOrientation(widget.clientWidth >= widget.clientHeight ? "horizontal" : "vertical");
+    };
+
+    updateOrientation();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateOrientation);
+      return () => window.removeEventListener("resize", updateOrientation);
+    }
+
+    const observer = new ResizeObserver(updateOrientation);
+    observer.observe(widget);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -199,14 +260,15 @@ export default function PomodoroTimer() {
   const activeDuration = mode === "break" ? breakDuration : duration;
   const totalSeconds = activeDuration * 60;
   const progressRatio = totalSeconds > 0 ? (totalSeconds - time) / totalSeconds : 0;
-  const strokeOffset = CIRCUMFERENCE - progressRatio * CIRCUMFERENCE;
   const percentage = Math.round(progressRatio * 100);
+  const activePixelBars = Math.round(progressRatio * PIXEL_BAR_COUNT);
+  const activePixelCircleSegments = Math.round(progressRatio * PIXEL_CIRCLE_COUNT);
 
   const minutesDisplay = String(Math.floor(time / 60)).padStart(2, "0");
   const secondsDisplay = String(time % 60).padStart(2, "0");
 
   return (
-    <div className={`pomo-outer-card view-${viewMode}`}>
+    <div ref={timerRef} className={`pomo-outer-card view-${viewMode}`}>
       {/* Timer title, view controls, and settings trigger. */}
       <header className="pomo-header">
         <div className="pomo-badge-group">
@@ -220,6 +282,8 @@ export default function PomodoroTimer() {
               className={`pomo-toggle-btn ${viewMode === "circle" ? "active" : ""}`}
               onClick={() => setViewMode("circle")}
               title="Circular Dial"
+              aria-label="Circular Dial"
+              aria-pressed={viewMode === "circle"}
             >
               <Circle size={14} />
             </button>
@@ -227,8 +291,19 @@ export default function PomodoroTimer() {
               className={`pomo-toggle-btn ${viewMode === "timeline" ? "active" : ""}`}
               onClick={() => setViewMode("timeline")}
               title="Horizontal Timeline"
+              aria-label="Horizontal Timeline"
+              aria-pressed={viewMode === "timeline"}
             >
               <AlignLeft size={14} />
+            </button>
+            <button
+              className={`pomo-toggle-btn ${viewMode === "flip" ? "active" : ""}`}
+              onClick={() => setViewMode("flip")}
+              title="Flip Clock"
+              aria-label="Flip Clock"
+              aria-pressed={viewMode === "flip"}
+            >
+              <Clock3 size={14} />
             </button>
           </div>
 
@@ -280,38 +355,58 @@ export default function PomodoroTimer() {
               aria-label="Break duration in minutes"
             />
           </label>
+          <label className="pomo-field pomo-progress-style-field">
+            <span>Progress</span>
+            <select
+              className="pomo-select"
+              value={progressStyle}
+              onChange={(event) => setProgressStyle(event.target.value)}
+              aria-label="Progress style"
+            >
+              <option value="pixel">Pixel</option>
+              <option value="smooth">Smooth</option>
+            </select>
+          </label>
         </div>
       )}
 
-      {/* Render the selected dial or timeline timer view. */}
+      {/* Render the selected timer view. */}
       <main className="pomo-body">
         {viewMode === "circle" ? (
           <div className="pomo-circle-stage">
             <div className="pomo-dial-wrapper">
               <svg className="pomo-svg" viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}>
-                <defs>
-                  <linearGradient id="pomoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#38bdf8" />
-                    <stop offset="100%" stopColor="#6366f1" />
-                  </linearGradient>
-                </defs>
-
-                <circle
-                  cx={SVG_CENTER}
-                  cy={SVG_CENTER}
-                  r={RADIUS}
-                  className="pomo-track-circle"
-                />
-                <circle
-                  cx={SVG_CENTER}
-                  cy={SVG_CENTER}
-                  r={RADIUS}
-                  className="pomo-progress-circle"
-                  style={{
-                    strokeDasharray: CIRCUMFERENCE,
-                    strokeDashoffset: strokeOffset,
-                  }}
-                />
+                {progressStyle === "pixel" ? (
+                  Array.from({ length: PIXEL_CIRCLE_COUNT }, (_, index) => (
+                    <rect
+                      key={`circle-pixel-${index}`}
+                      x={SVG_CENTER - 4}
+                      y={SVG_CENTER - RADIUS - 4}
+                      width="8"
+                      height="8"
+                      rx="1"
+                      transform={`rotate(${(index * 360) / PIXEL_CIRCLE_COUNT - 90} ${SVG_CENTER} ${SVG_CENTER})`}
+                      className={`pomo-pixel-segment ${index < activePixelCircleSegments ? "active" : ""}`}
+                    />
+                  ))
+                ) : (
+                  <>
+                    <circle
+                      className="pomo-track-circle"
+                      cx={SVG_CENTER}
+                      cy={SVG_CENTER}
+                      r={RADIUS}
+                    />
+                    <circle
+                      className="pomo-progress-circle"
+                      cx={SVG_CENTER}
+                      cy={SVG_CENTER}
+                      r={RADIUS}
+                      strokeDasharray={CIRCUMFERENCE}
+                      strokeDashoffset={CIRCUMFERENCE * (1 - progressRatio)}
+                    />
+                  </>
+                )}
               </svg>
 
               <div className="pomo-dial-center">
@@ -327,7 +422,7 @@ export default function PomodoroTimer() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : viewMode === "timeline" ? (
           <div className="pomo-timeline-stage">
             <div className="pomo-timeline-header">
               <span className="pomo-status-tag">
@@ -343,13 +438,60 @@ export default function PomodoroTimer() {
             </div>
 
             <div className="pomo-timeline-bar-wrapper">
-              <div className="pomo-timeline-track">
-                <div className="pomo-timeline-fill" style={{ width: `${percentage}%` }} />
+              <div className={`pomo-timeline-track ${progressStyle === "smooth" ? "smooth" : ""}`}>
+                {progressStyle === "pixel" ? (
+                  <svg className="pomo-pixel-progress" viewBox="0 0 1120 40" preserveAspectRatio="none" aria-hidden="true">
+                    {Array.from({ length: PIXEL_BAR_COUNT }, (_, index) => (
+                      <rect
+                        key={`bar-pixel-${index}`}
+                        x={index * 20 + 3}
+                        y="6"
+                        width="14"
+                        height="28"
+                        rx="2"
+                        className={`pomo-pixel-segment ${index < activePixelBars ? "active" : ""}`}
+                      />
+                    ))}
+                  </svg>
+                ) : (
+                  <div className="pomo-timeline-fill" style={{ width: `${progressRatio * 100}%` }} />
+                )}
               </div>
               <div className="pomo-timeline-labels">
                 <span>0m</span>
                 <span>{Math.round(activeDuration / 2)}m</span>
                 <span>{activeDuration}m</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={`pomo-flip-stage pomo-flip-${flipOrientation}`}>
+            <div className="pomo-timeline-header">
+              <span className="pomo-status-tag">
+                {mode === "break" ? "ON BREAK" : running ? "FOCUSING" : "PAUSED"}
+              </span>
+              <span className="pomo-percentage-tag">{percentage}%</span>
+            </div>
+
+            <div
+              className="pomo-flip-clock"
+              role="timer"
+              aria-label={`${Number(minutesDisplay)} minutes ${Number(secondsDisplay)} seconds`}
+            >
+              <div className="pomo-flip-unit">
+                <div className="pomo-flip-digits" aria-hidden="true">
+                  {[...minutesDisplay].map((digit, index) => (
+                    <FlipDigit digit={digit} key={`minute-${index}`} />
+                  ))}
+                </div>
+              </div>
+              <span className="pomo-flip-separator" aria-hidden="true">:</span>
+              <div className="pomo-flip-unit">
+                <div className="pomo-flip-digits" aria-hidden="true">
+                  {[...secondsDisplay].map((digit, index) => (
+                    <FlipDigit digit={digit} key={`second-${index}`} />
+                  ))}
+                </div>
               </div>
             </div>
           </div>

@@ -1,4 +1,6 @@
 .apple-widget {
+  position: relative;
+  container-type: size;
   width: 100%;
   height: 100%;
   min-height: 150px;
@@ -18,6 +20,94 @@
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
   color: #ffffff;
   user-select: none;
+}
+
+.apple-sky-scene {
+  position: absolute;
+  inset: 0 0 18px;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.apple-sky-path {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.apple-sky-path path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 0.55;
+  stroke-dasharray: 1.5 2;
+}
+
+.apple-widget-body {
+  position: relative;
+}
+
+.apple-sky-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.apple-sky-marker.is-positioned {
+  transition: left 1.4s cubic-bezier(0.22, 1, 0.36, 1), top 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.apple-sky-marker.is-positioned.is-resizing {
+  transition: none;
+}
+
+.apple-sky-celestial {
+  width: clamp(20px, 8cqw, 30px);
+  height: clamp(20px, 8cqw, 30px);
+}
+
+.apple-sky-sun {
+  color: #ffd60a;
+  filter: drop-shadow(0 0 5px rgba(255, 214, 10, 0.34));
+}
+
+.apple-sky-sunrise,
+.apple-sky-sunset {
+  color: #ff9f0a;
+  filter: drop-shadow(0 0 6px rgba(255, 159, 10, 0.4));
+}
+
+.apple-sky-moon {
+  color: #e2e8f0;
+  filter: drop-shadow(0 0 7px rgba(226, 232, 240, 0.3));
+}
+
+.apple-sky-weather {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 8px);
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.apple-sky-weather-icon {
+  flex: 0 0 auto;
+  width: clamp(20px, 7cqw, 30px);
+  height: clamp(20px, 7cqw, 30px);
+}
+
+.apple-sky-temperature {
+  font-size: clamp(0.8rem, 3cqw, 1.15rem);
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.apple-widget-header,
+.apple-weather-attribution {
+  position: relative;
+  z-index: 1;
 }
 
 /* Widget heading and location details. */
@@ -49,47 +139,117 @@
 /* Weather and clock content layout. */
 .apple-widget-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-top: auto;
+  justify-content: center;
+  min-height: 0;
+  gap: 0.6rem;
+  margin-top: 0;
+  padding-bottom: 10px;
 }
 
-/* Local time display. */
+.apple-time-section {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.apple-time-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  gap: clamp(6px, 2cqw, 12px);
+  max-width: 100%;
+}
+
+.apple-clock-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
 .apple-clock {
-  font-size: clamp(2rem, 8cqw, 3rem);
+  font-size: clamp(2.25rem, min(17cqw, 32cqh), 5rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
+  white-space: nowrap;
   color: #ffffff;
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Current weather summary. */
-.apple-weather-section {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.apple-weather-primary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.apple-temp {
-  font-size: clamp(1.5rem, 5cqw, 2.2rem);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.apple-day-period {
+  display: block;
+  font-size: clamp(0.85rem, 3.2cqw, 1.2rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.78);
   line-height: 1;
 }
 
-.apple-weather-meta {
+.apple-time-meta {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.apple-weather-static {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+}
+
+.apple-weather-section {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: flex-end;
   align-items: flex-end;
-  gap: 2px;
+  overflow: hidden;
+}
+
+.apple-weather-meta {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  width: 100%;
+  padding-top: 4px;
+  text-align: left;
+}
+
+.apple-weather-meta-details {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  text-align: right;
+}
+
+.apple-temp {
+  font-size: clamp(1.35rem, 5cqw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 .apple-condition {
@@ -98,11 +258,18 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+.apple-feels-like {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .apple-humidity {
   display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 0.7rem;
+  align-self: flex-start;
+  gap: 4px;
+  margin: 0;
+  font-size: 0.78rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.65);
 }
@@ -132,15 +299,106 @@
 .apple-icon.storm { color: #bf5af2; }
 .apple-icon.fog { color: #e1e1e6; }
 
+@media (prefers-reduced-motion: reduce) {
+  .apple-sky-marker {
+    transition: none;
+  }
+}
+
 /* Adapt the widget when its container is wider than it is tall. */
-@container (min-width: 320px) {
+@container (min-width: 340px) {
   .apple-widget-body {
     flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
+    align-items: stretch;
+    gap: clamp(8px, 2.5cqw, 18px);
+  }
+
+  .apple-time-section {
+    flex: 1.25;
+    align-self: stretch;
+    justify-content: flex-end;
+  }
+
+  .apple-time-readout {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    gap: clamp(4px, 2cqw, 10px);
+  }
+
+  .apple-clock-wrap {
+    align-self: center;
+  }
+
+  .apple-clock {
+    font-size: clamp(2.5rem, min(18cqw, 38cqh), 5.25rem);
+  }
+
+  .apple-weather-section {
+    flex: 0.75;
+    align-self: stretch;
   }
 
   .apple-weather-meta {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@container (min-width: 420px) {
+  .apple-clock {
+    font-size: clamp(3rem, min(22cqw, 45cqh), 6rem);
+  }
+}
+
+@container (max-width: 339px) {
+  .apple-widget-body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: clamp(10px, 4cqh, 18px);
+  }
+
+  .apple-time-section {
+    flex-direction: column;
     align-items: flex-start;
+    gap: 8px;
+  }
+
+  .apple-time-readout {
+    align-items: center;
+  }
+
+  .apple-clock {
+    font-size: clamp(2rem, min(15cqw, 24cqh), 4.5rem);
+  }
+
+  .apple-condition {
+    font-size: 0.7rem;
+  }
+
+  .apple-weather-section {
+    min-height: 58px;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: flex-end;
+  }
+
+  .apple-sky-scene {
+    inset-inline: 0;
+    bottom: 0;
+  }
+
+  .apple-weather-meta {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+  }
+
+  .apple-weather-static .apple-temp {
+    font-size: 1.35rem;
+  }
+
+  .apple-weather-attribution {
+    font-size: 0.52rem;
   }
 }

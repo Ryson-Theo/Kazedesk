@@ -11,13 +11,19 @@ import {
   Trash2,
   Check,
   Plus,
-  UploadCloud
+  UploadCloud,
+  ImagePlus
 } from 'lucide-react';
 import { storageManager, getDefaultDashboardConfig } from '../utils/localStorage';
+import { readBackgroundImage } from '../utils/backgroundImage';
 import SelectDropdown from './SelectDropdown';
 import '../styles/DashboardSettings.css';
 
-const CARD_STYLES = ['glass', 'transparent', 'outline'];
+const CARD_STYLES = [
+  { value: 'glass', label: 'Tinted Glass' },
+  { value: 'transparent', label: 'Blur Glass' },
+  { value: 'outline', label: 'Outline' },
+];
 const CARD_BORDERS = ['rounded', 'rectangle'];
 
 function extractPlaylistId(value) {
@@ -33,6 +39,9 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState('background'); // Available sections: background, weather, YouTube, and appearance.
   const importFileRef = useRef(null);
+  const backgroundFileRef = useRef(null);
+  const [backgroundImageError, setBackgroundImageError] = useState('');
+  const [readingBackgroundImage, setReadingBackgroundImage] = useState(false);
   
   const [localConfig, setLocalConfig] = useState(() => ({
     ...getDefaultDashboardConfig(),
@@ -118,8 +127,25 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
 
   const updateConfig = (updates) => {
     const next = { ...localConfig, ...updates };
-    setLocalConfig(next);
     onConfigChange?.(next);
+    setLocalConfig(next);
+  };
+
+  const handleBackgroundImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setReadingBackgroundImage(true);
+    setBackgroundImageError('');
+    try {
+      const backgroundImage = await readBackgroundImage(file);
+      updateConfig({ backgroundType: 'image', backgroundImage });
+    } catch (error) {
+      setBackgroundImageError(error instanceof Error ? error.message : 'The image could not be applied.');
+    } finally {
+      setReadingBackgroundImage(false);
+    }
   };
 
   const handleSaveWeather = () => {
@@ -389,7 +415,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                   <div className="tab-pane">
                     <label className="settings-label">Background Mode</label>
                     <p className="settings-description">
-                      Choose between solid tone, dual-color gradient, or drag image/GIF files directly onto your dashboard workspace.
+                      Choose a solid tone, gradient, or custom image. On mobile, select an image from your device; on desktop, you can also drag one onto the dashboard.
                     </p>
 
                     <div className="type-chip-group">
@@ -412,6 +438,37 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                         Custom Image
                       </button>
                     </div>
+
+                    {localConfig.backgroundType === 'image' && (
+                      <div className="background-image-picker">
+                        <input
+                          ref={backgroundFileRef}
+                          className="background-image-input"
+                          type="file"
+                          accept=".gif,.png,.jpg,.jpeg,.webp,image/gif,image/png,image/jpeg,image/webp"
+                          onChange={handleBackgroundImageChange}
+                          aria-label="Choose a background image"
+                        />
+                        <button
+                          type="button"
+                          className="settings-action-btn background-image-button"
+                          onClick={() => backgroundFileRef.current?.click()}
+                          disabled={readingBackgroundImage}
+                        >
+                          <ImagePlus size={16} />
+                          <span>{readingBackgroundImage ? 'Checking image…' : 'Choose image or GIF'}</span>
+                        </button>
+                        <p className="settings-description background-image-help">
+                          GIF, PNG, JPEG, or WebP · up to 2 MB. SVG and other file types are blocked.
+                        </p>
+                        {localConfig.backgroundImage && (
+                          <p className="background-image-selected" role="status">A custom background is selected.</p>
+                        )}
+                        {backgroundImageError && (
+                          <p className="settings-validation-message" role="alert">{backgroundImageError}</p>
+                        )}
+                      </div>
+                    )}
 
                     {localConfig.backgroundType === 'solid' && (
                       <div className="field-stack">
@@ -452,7 +509,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                     )}
 
                     <div className="drag-drop-hint">
-                      💡 <span>Pro tip:</span> Drag and drop any image or animated GIF anywhere on screen to automatically replace the background wallpaper.
+                      <span>Desktop tip:</span> You can also drag an image or GIF onto the dashboard to set it as the background.
                     </div>
                   </div>
                 )}
@@ -512,6 +569,22 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                             24-Hour Format
                           </button>
                         </div>
+                      </div>
+
+                      <div className="input-group">
+                        <label className="settings-sub-label" id="weather-animation-label">Sky Animation</label>
+                        <p className="settings-description">
+                          Move the sun, moon, and current weather across the sky using the selected timezone.
+                        </p>
+                        <button
+                          type="button"
+                          className={`style-toggle-btn ${localConfig.weatherAnimationEnabled !== false ? 'active' : ''}`}
+                          aria-label={`Sky animation ${localConfig.weatherAnimationEnabled !== false ? 'enabled' : 'disabled'}`}
+                          aria-pressed={localConfig.weatherAnimationEnabled !== false}
+                          onClick={() => updateConfig({ weatherAnimationEnabled: localConfig.weatherAnimationEnabled === false })}
+                        >
+                          {localConfig.weatherAnimationEnabled !== false ? 'Enabled' : 'Disabled'}
+                        </button>
                       </div>
 
                       <button className="settings-action-btn secondary" onClick={handleSaveWeather}>
@@ -603,20 +676,22 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
                   <div className="tab-pane">
                     <label className="settings-label">Widget Themes & Borders</label>
                     <p className="settings-description">
-                      Customize card glass transparency, border curves, and ambient effects.
+                      Tinted Glass has a stronger surface tint, Blur Glass is lighter with a soft blur, and Outline is transparent with a defined edge and no blur.
                     </p>
 
                     <div className="field-stack">
                       <div className="input-group">
                         <label className="settings-sub-label">Card Style</label>
                         <div className="card-style-group">
-                          {CARD_STYLES.map((style) => (
+                          {CARD_STYLES.map(({ value, label }) => (
                             <button
-                              key={style}
-                              onClick={() => updateConfig({ cardStyle: style })}
-                              className={`style-toggle-btn ${localConfig.cardStyle === style ? 'active' : ''}`}
+                              key={value}
+                              type="button"
+                              onClick={() => updateConfig({ cardStyle: value })}
+                              className={`style-toggle-btn ${localConfig.cardStyle === value ? 'active' : ''}`}
+                              aria-pressed={localConfig.cardStyle === value}
                             >
-                              {style}
+                              {label}
                             </button>
                           ))}
                         </div>

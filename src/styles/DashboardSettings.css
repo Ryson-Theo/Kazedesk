@@ -412,6 +412,62 @@
   font-weight: 600;
 }
 
+.background-image-picker {
+  display: grid;
+  justify-items: start;
+  gap: 0.4rem;
+}
+
+.background-image-input {
+  display: none;
+}
+
+.background-image-button {
+  width: auto;
+  min-height: 42px;
+  padding: 0.65rem 0.9rem;
+  background: var(--dashboard-accent-soft, rgba(182, 210, 173, 0.16));
+  color: var(--dashboard-accent, #b6d2ad);
+  border: 1px solid var(--dashboard-accent-soft, rgba(182, 210, 173, 0.3));
+}
+
+.background-image-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.background-image-help,
+.background-image-selected {
+  margin: 0;
+}
+
+.background-image-selected {
+  color: var(--dashboard-accent, #b6d2ad);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 640px) {
+  .drag-drop-hint {
+    display: none;
+  }
+}
+
+.dashboard-background-error {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 110;
+  max-width: min(90vw, 520px);
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 0.75rem;
+  background: rgba(69, 10, 10, 0.94);
+  color: #fee2e2;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  transform: translateX(-50%);
+}
+
 /* Dialog footer actions and button states. */
 .settings-action-btn {
   width: 100%;
