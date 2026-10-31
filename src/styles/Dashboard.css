@@ -277,7 +277,7 @@
 }
 
 .widget:hover {
-  transform: translateY(-2px);
+  transform: none;
 }
 
 .widget .widget-handle,
@@ -314,9 +314,11 @@
 }
 
 .widget.outline {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.20);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
 
 .widget.glass:hover,
@@ -372,8 +374,10 @@
 
 .dashboard.landing-theme-dark .widget.outline {
   background: rgba(17, 22, 20, 0.06);
-  border-color: rgba(182, 210, 173, 0.28);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: rgba(182, 210, 173, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
 
 .dashboard.landing-theme-light .widget.transparent {
@@ -383,9 +387,11 @@
 }
 
 .dashboard.landing-theme-light .widget.outline {
-  background: rgba(244, 245, 241, 0.05);
-  border-color: rgba(61, 105, 74, 0.34);
-  box-shadow: 0 8px 24px rgba(23, 33, 28, 0.04);
+  background: rgba(244, 245, 241, 0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: rgba(61, 105, 74, 0.3);
+  box-shadow: 0 12px 32px rgba(23, 33, 28, 0.08);
 }
 
 .dashboard.landing-theme-dark .widget.outline:hover {
@@ -634,6 +640,7 @@
 .dashboard.landing-theme-light .pomo-icon-btn,
 .dashboard.landing-theme-light .pomo-chip,
 .dashboard.landing-theme-light .pomo-input,
+.dashboard.landing-theme-light .pomo-select,
 .dashboard.landing-theme-light .youtube-input,
 .dashboard.landing-theme-light .analytics-period-switch button.active {
   border-color: var(--lp-line);
@@ -690,14 +697,6 @@
 
 .dashboard.landing-theme-dark .settings-header-title svg {
   color: var(--dashboard-accent);
-}
-
-.dashboard .pomo-svg stop {
-  stop-color: var(--dashboard-accent);
-}
-
-.dashboard .pomo-timeline-fill {
-  background: linear-gradient(90deg, var(--dashboard-accent), color-mix(in srgb, var(--dashboard-accent) 62%, white));
 }
 
 .widget.rectangle {
@@ -763,7 +762,6 @@
 }
 
 .widget.widget-restoring {
-  z-index: 20;
   animation: widget-liquid-restore 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   transform-origin: center bottom;
 }
@@ -1439,7 +1437,6 @@
   }
 
   .widget.mobile-widget-dragging {
-    z-index: 10;
     opacity: 0.72;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   }
@@ -1517,6 +1514,14 @@
 }
 
 @media (max-width: 600px) {
+  .widget[data-widget-id="timer"] {
+    min-height: 270px;
+  }
+
+  .widget[data-widget-id="timer"]:has(.pomo-settings-panel) {
+    min-height: 360px;
+  }
+
   .ambient-strip {
     bottom: 10px;
     gap: 4px;

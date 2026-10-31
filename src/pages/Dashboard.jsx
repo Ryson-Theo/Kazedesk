@@ -11,6 +11,7 @@ import WeatherTime from "../components/WeatherTime";
 import NotesCard from "../components/NotesCard";
 import TaskCard from "../components/TaskCard";
 import YouTubePlayer from "../components/YouTubePlayer";
+import { readBackgroundImage } from "../utils/backgroundImage";
 import { getDefaultDashboardConfig, storageManager } from "../utils/localStorage";
 
 import "../styles/Dashboard.css";
@@ -91,6 +92,7 @@ export default function Dashboard() {
   const dragMovedRef = useRef(false);
   const idleTimerRef = useRef(null);
   const restoreAnimationTimerRef = useRef(null);
+  const backgroundDropErrorTimerRef = useRef(null);
   const [dashboardConfig, setDashboardConfig] = useState(() => {
     const saved = storageManager.getDashboardConfig();
     const legacyBg = localStorage.getItem("dashboard-bg");
@@ -105,6 +107,7 @@ export default function Dashboard() {
   const [mobileWidgetOrder, setMobileWidgetOrder] = useState(() => (
     normalizeWidgetOrder(storageManager.getCardsLayout()?.mobileOrder)
   ));
+  const [widgetStackOrder, setWidgetStackOrder] = useState(WIDGET_IDS);
   const [minimizedWidgets, setMinimizedWidgets] = useState(() => {
     const saved = storageManager.getMinimizedWidgets();
     return saved ? {
@@ -121,6 +124,7 @@ export default function Dashboard() {
   const [restoringWidgetId, setRestoringWidgetId] = useState(null);
   const [mobileDraggedWidgetId, setMobileDraggedWidgetId] = useState(null);
   const [mobileDropTargetId, setMobileDropTargetId] = useState(null);
+  const [backgroundDropError, setBackgroundDropError] = useState("");
   const mobilePointerRef = useRef(null);
 
   useEffect(() => {
@@ -140,6 +144,7 @@ export default function Dashboard() {
     return () => {
       clearTimeout(idleTimerRef.current);
       clearTimeout(restoreAnimationTimerRef.current);
+      clearTimeout(backgroundDropErrorTimerRef.current);
       window.removeEventListener("pointermove", handlePointerMovement);
       window.removeEventListener("pointerdown", handlePointerMovement);
       window.removeEventListener("touchstart", handlePointerMovement);
@@ -151,14 +156,13 @@ export default function Dashboard() {
     const clampLayoutToViewport = () => {
       if (window.innerWidth <= 960 || !workspaceRef.current) return;
       const workspaceWidth = workspaceRef.current.clientWidth;
-      const minimumLeft = 84;
 
       setWidgetLayout((previous) => {
         let changed = false;
         const next = { ...previous };
         Object.entries(previous).forEach(([id, widget]) => {
-          const width = Math.min(widget.w, Math.max(MIN_WIDGET_WIDTHS[id], workspaceWidth - minimumLeft - 24));
-          const x = Math.min(Math.max(widget.x, minimumLeft), Math.max(minimumLeft, workspaceWidth - width - 24));
+          const width = Math.min(widget.w, workspaceWidth);
+          const x = Math.min(Math.max(widget.x, 0), Math.max(0, workspaceWidth - width));
           if (x !== widget.x || width !== widget.w) {
             next[id] = { ...widget, x, w: width };
             changed = true;
@@ -182,10 +186,9 @@ export default function Dashboard() {
   }, [minimizedWidgets]);
 
   useEffect(() => {
-    if (dashboardConfig.backgroundImage) {
-      localStorage.setItem("dashboard-bg", dashboardConfig.backgroundImage);
-    }
-  }, [dashboardConfig.backgroundImage]);
+    storageManager.saveDashboardConfig(dashboardConfig);
+    localStorage.removeItem("dashboard-bg");
+  }, [dashboardConfig]);
 
   useEffect(() => {
     if (!dragState && !resizeState) return;
@@ -205,19 +208,18 @@ export default function Dashboard() {
 
         const nextX = event.clientX - bounds.left - dragState.offsetX;
         const nextY = event.clientY - bounds.top + scrollTop - dragState.offsetY;
-        const minX = 84;
 
         setWidgetLayout((prev) => {
           const width = dragState.width || prev[dragState.id].w || 320;
           const height = dragState.height || prev[dragState.id].h || 240;
-          const maxX = Math.max(minX, bounds.width - width - 24);
+          const maxX = Math.max(0, bounds.width - width);
           const minY = scrollTop;
           const maxY = Math.max(minY, scrollTop + workspaceRef.current.clientHeight - height);
           return {
             ...prev,
             [dragState.id]: {
               ...prev[dragState.id],
-              x: Math.max(minX, Math.min(nextX, maxX)),
+              x: Math.max(0, Math.min(nextX, maxX)),
               y: Math.max(minY, Math.min(nextY, maxY)),
             },
           };
@@ -229,14 +231,22 @@ export default function Dashboard() {
         const minHeight = resizeState.id === "notes" ? 300 : resizeState.id === "youtube" ? 280 : 220;
         const nextWidth = Math.max(minWidth, event.clientX - bounds.left - resizeState.offsetX);
         const nextHeight = Math.max(minHeight, event.clientY - bounds.top + scrollTop - resizeState.offsetY);
-        setWidgetLayout((prev) => ({
-          ...prev,
-          [resizeState.id]: {
-            ...prev[resizeState.id],
-            w: Math.min(Math.max(minWidth, nextWidth), Math.max(minWidth, bounds.width - prev[resizeState.id].x - 24)),
-            h: Math.min(Math.max(minHeight, nextHeight), Math.max(minHeight, workspaceRef.current.clientHeight + scrollTop - prev[resizeState.id].y)),
-          },
-        }));
+        setWidgetLayout((prev) => {
+          const current = prev[resizeState.id];
+          const maxWidth = Math.max(1, bounds.width - current.x);
+          const maxHeight = Math.max(
+            1,
+            workspaceRef.current.clientHeight + scrollTop - current.y,
+          );
+          return {
+            ...prev,
+            [resizeState.id]: {
+              ...current,
+              w: Math.min(Math.max(minWidth, nextWidth), maxWidth),
+              h: Math.min(Math.max(minHeight, nextHeight), maxHeight),
+            },
+          };
+        });
       }
     };
 
@@ -306,11 +316,17 @@ export default function Dashboard() {
 
   const handleConfigChange = (updates) => {
     const next = { ...dashboardConfig, ...updates };
-    setDashboardConfig(next);
     storageManager.saveDashboardConfig(next);
+    setDashboardConfig(next);
   };
 
-  const handleBackgroundDrop = (event) => {
+  const showBackgroundDropError = (message) => {
+    setBackgroundDropError(message);
+    clearTimeout(backgroundDropErrorTimerRef.current);
+    backgroundDropErrorTimerRef.current = setTimeout(() => setBackgroundDropError(""), 6000);
+  };
+
+  const handleBackgroundDrop = async (event) => {
     event.preventDefault();
 
     const candidates = [
@@ -323,19 +339,25 @@ export default function Dashboard() {
       const normalized = candidate.trim();
       const urlMatch = normalized.match(/https?:\/\/[^\s]+/i);
       if (urlMatch?.[0]) {
-        handleConfigChange({ backgroundType: 'image', backgroundImage: urlMatch[0], bgColor: dashboardConfig.bgColor });
+        const url = urlMatch[0];
+        if (!/\.(gif|png|jpe?g|webp)(?:[?#].*)?$/i.test(url)) {
+          showBackgroundDropError("Use a GIF, PNG, JPEG, or WebP image URL.");
+          return;
+        }
+        handleConfigChange({ backgroundType: 'image', backgroundImage: url, bgColor: dashboardConfig.bgColor });
         return;
       }
     }
 
     const file = event.dataTransfer.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      handleConfigChange({ backgroundType: 'image', backgroundImage: reader.result, bgColor: dashboardConfig.bgColor });
-    };
-    reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      const backgroundImage = await readBackgroundImage(file);
+      handleConfigChange({ backgroundType: 'image', backgroundImage, bgColor: dashboardConfig.bgColor });
+      setBackgroundDropError("");
+    } catch (error) {
+      showBackgroundDropError(error instanceof Error ? error.message : "The image could not be applied.");
+    }
   };
 
   const startDrag = (id, event) => {
@@ -353,6 +375,14 @@ export default function Dashboard() {
       width: (id === "notes" && notesMinimized) || (id === "tasks" && tasksMinimized) || (id === "youtube" && youtubeMinimized) || (id === "analytics" && analyticsMinimized) ? 64 : current.w,
       height: (id === "notes" && notesMinimized) || (id === "tasks" && tasksMinimized) || (id === "youtube" && youtubeMinimized) || (id === "analytics" && analyticsMinimized) ? 64 : current.h,
     });
+  };
+
+  const bringWidgetToFront = (id) => {
+    setWidgetStackOrder((previous) => (
+      previous[previous.length - 1] === id
+        ? previous
+        : [...previous.filter((widgetId) => widgetId !== id), id]
+    ));
   };
 
   const startMobileWidgetReorder = (id, event) => {
@@ -427,6 +457,7 @@ export default function Dashboard() {
 
   const toggleWidgetMinimized = (id) => {
     if (minimizedWidgets[id]) {
+      bringWidgetToFront(id);
       setRestoringWidgetId(id);
       clearTimeout(restoreAnimationTimerRef.current);
       restoreAnimationTimerRef.current = setTimeout(() => setRestoringWidgetId(null), 720);
@@ -476,12 +507,18 @@ export default function Dashboard() {
       }}
     >
       <div className="dashboardOverlay" />
+      {backgroundDropError && (
+        <div className="dashboard-background-error" role="alert">
+          {backgroundDropError}
+        </div>
+      )}
 
       <main className="workspace" ref={workspaceRef}>
         <div
           className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${mobileDraggedWidgetId === "timer" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "timer" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="timer"
-          style={{ left: `${widgetLayout.timer.x}px`, top: `${widgetLayout.timer.y}px`, width: `${widgetLayout.timer.w}px`, height: `${widgetLayout.timer.h}px`, order: mobileWidgetOrder.indexOf("timer") }}
+          style={{ left: `${widgetLayout.timer.x}px`, top: `${widgetLayout.timer.y}px`, width: `${widgetLayout.timer.w}px`, height: `${widgetLayout.timer.h}px`, order: mobileWidgetOrder.indexOf("timer"), zIndex: widgetStackOrder.indexOf("timer") + 1 }}
+          onPointerDownCapture={() => bringWidgetToFront("timer")}
           onMouseDown={(event) => startDrag("timer", event)}
         >
           {renderMobileDragZones("timer")}
@@ -495,7 +532,8 @@ export default function Dashboard() {
         <div
           className={`widget ${dashboardConfig.cardStyle || "glass"} ${dashboardConfig.cardBorder || "rounded"} ${mobileDraggedWidgetId === "weather" ? "mobile-widget-dragging" : ""} ${mobileDropTargetId === "weather" ? "mobile-widget-drop-target" : ""}`}
           data-widget-id="weather"
-          style={{ left: `${widgetLayout.weather.x}px`, top: `${widgetLayout.weather.y}px`, width: `${widgetLayout.weather.w}px`, height: `${widgetLayout.weather.h}px`, order: mobileWidgetOrder.indexOf("weather") }}
+          style={{ left: `${widgetLayout.weather.x}px`, top: `${widgetLayout.weather.y}px`, width: `${widgetLayout.weather.w}px`, height: `${widgetLayout.weather.h}px`, order: mobileWidgetOrder.indexOf("weather"), zIndex: widgetStackOrder.indexOf("weather") + 1 }}
+          onPointerDownCapture={() => bringWidgetToFront("weather")}
           onMouseDown={(event) => startDrag("weather", event)}
         >
           {renderMobileDragZones("weather")}
@@ -503,7 +541,7 @@ export default function Dashboard() {
             <span>Move</span>
           </div>
           <div className="widget-resize-handle" onMouseDown={(event) => startResize("weather", event)} />
-          <WeatherTime />
+          <WeatherTime animationEnabled={dashboardConfig.weatherAnimationEnabled !== false} />
         </div>
 
         <div
@@ -515,7 +553,9 @@ export default function Dashboard() {
             width: `${tasksMinimized ? 64 : widgetLayout.tasks.w}px`,
             height: `${tasksMinimized ? 64 : widgetLayout.tasks.h}px`,
             order: mobileWidgetOrder.indexOf("tasks"),
+            zIndex: widgetStackOrder.indexOf("tasks") + 1,
           }}
+          onPointerDownCapture={() => bringWidgetToFront("tasks")}
           onMouseDown={(event) => startDrag("tasks", event)}
         >
           {renderMobileDragZones("tasks")}
@@ -538,7 +578,9 @@ export default function Dashboard() {
             width: `${youtubeMinimized ? 64 : widgetLayout.youtube.w}px`,
             height: `${youtubeMinimized ? 64 : widgetLayout.youtube.h}px`,
             order: mobileWidgetOrder.indexOf("youtube"),
+            zIndex: widgetStackOrder.indexOf("youtube") + 1,
           }}
+          onPointerDownCapture={() => bringWidgetToFront("youtube")}
           onMouseDown={(event) => startDrag("youtube", event)}
         >
           {renderMobileDragZones("youtube")}
@@ -562,7 +604,9 @@ export default function Dashboard() {
             width: `${analyticsMinimized ? 64 : widgetLayout.analytics.w}px`,
             height: `${analyticsMinimized ? 64 : widgetLayout.analytics.h}px`,
             order: mobileWidgetOrder.indexOf("analytics"),
+            zIndex: widgetStackOrder.indexOf("analytics") + 1,
           }}
+          onPointerDownCapture={() => bringWidgetToFront("analytics")}
           onMouseDown={(event) => startDrag("analytics", event)}
         >
           {renderMobileDragZones("analytics")}
@@ -587,7 +631,9 @@ export default function Dashboard() {
             width: `${notesMinimized ? 64 : widgetLayout.notes.w}px`,
             height: `${notesMinimized ? 64 : widgetLayout.notes.h}px`,
             order: mobileWidgetOrder.indexOf("notes"),
+            zIndex: widgetStackOrder.indexOf("notes") + 1,
           }}
+          onPointerDownCapture={() => bringWidgetToFront("notes")}
           onMouseDown={(event) => startDrag("notes", event)}
         >
           {renderMobileDragZones("notes")}

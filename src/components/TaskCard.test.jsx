@@ -90,6 +90,36 @@ describe('TaskCard', () => {
     vi.useRealTimers();
   });
 
+  it('checks a scheduled reminder at its due time without polling every second', () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 9, 11, 10, 0, 0);
+    vi.setSystemTime(now);
+    const reminder = new Date(now.getTime() + 5_000);
+    localStorage.setItem('kazedesk_tasks', JSON.stringify([{
+      id: 2,
+      title: 'Timed task',
+      category: 'Inbox',
+      completed: false,
+      repeatDaily: false,
+      notified: false,
+      reminder: reminder.toISOString(),
+    }]));
+    const reminderListener = vi.fn();
+    window.addEventListener('task-reminder-due', reminderListener);
+    const view = render(<TaskCard />);
+
+    expect(reminderListener).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(4_999));
+    expect(reminderListener).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(reminderListener).toHaveBeenCalledOnce();
+    expect(storageManager.getTasks()[0].notified).toBe(true);
+
+    view.unmount();
+    window.removeEventListener('task-reminder-due', reminderListener);
+    vi.useRealTimers();
+  });
+
   it('deletes a category folder and moves its tasks to Inbox', () => {
     localStorage.setItem('kazedesk_task_categories', JSON.stringify(['Inbox', 'Work']));
     localStorage.setItem('kazedesk_tasks', JSON.stringify([{
@@ -227,12 +257,13 @@ describe('TaskCard', () => {
   });
 
   it('uses a native time input for reminder edits and provides an in-panel close action', () => {
-    const reminder = new Date(2026, 9, 30, 15, 45).toISOString();
+    const reminder = new Date(2026, 9, 31, 15, 45).toISOString();
     localStorage.setItem('kazedesk_tasks', JSON.stringify([
       { id: 8, title: 'Focus block', completed: false, priority: 'medium', reminder },
     ]));
     render(<TaskCard />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show task options' }));
     fireEvent.click(screen.getByRole('button', { name: 'More options for Focus block' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
     const timeInput = screen.getByLabelText('Reminder for Focus block');

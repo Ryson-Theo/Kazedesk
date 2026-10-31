@@ -317,7 +317,37 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
   };
 
   useEffect(() => {
+    let reminderTimer;
+    let disposed = false;
+
+    const scheduleNextCheck = (updatedTasks, now) => {
+      const deadlines = [];
+
+      updatedTasks.forEach((task) => {
+        if (task.repeatDaily && task.completed && task.completedAt) {
+          const completedDate = new Date(task.completedAt);
+          if (!Number.isNaN(completedDate.getTime())) {
+            const resetDate = new Date(completedDate);
+            resetDate.setDate(resetDate.getDate() + 1);
+            resetDate.setHours(0, 0, 0, 0);
+            deadlines.push(Math.max(now.getTime(), resetDate.getTime()));
+          }
+        }
+
+        if (!task.completed && task.reminder && (task.repeatDaily || !task.notified)) {
+          const reminderTime = Date.parse(task.reminder);
+          if (Number.isFinite(reminderTime)) deadlines.push(Math.max(now.getTime(), reminderTime));
+        }
+      });
+
+      if (deadlines.length === 0) return;
+      const nextDeadline = Math.min(...deadlines);
+      const delay = Math.min(Math.max(0, nextDeadline - Date.now()), 2_147_483_647);
+      reminderTimer = window.setTimeout(checkReminders, delay);
+    };
+
     const checkReminders = () => {
+      if (disposed) return;
       const now = new Date();
       const dueTasks = [];
       let changed = false;
@@ -353,12 +383,25 @@ export default function TaskCard({ minimized = false, onToggleMinimize }) {
         setTasks(updatedTasks);
         storageManager.saveTasks(updatedTasks);
       }
+
+      scheduleNextCheck(updatedTasks, now);
     };
 
     checkReminders();
-    const interval = setInterval(checkReminders, 1000);
+    const checkOnReturn = () => {
+      if (document.hidden) return;
+      clearTimeout(reminderTimer);
+      checkReminders();
+    };
+    document.addEventListener('visibilitychange', checkOnReturn);
+    window.addEventListener('focus', checkOnReturn);
 
-    return () => clearInterval(interval);
+    return () => {
+      disposed = true;
+      clearTimeout(reminderTimer);
+      document.removeEventListener('visibilitychange', checkOnReturn);
+      window.removeEventListener('focus', checkOnReturn);
+    };
   }, [tasks]);
 
   const handleAddTask = () => {

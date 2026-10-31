@@ -241,6 +241,7 @@ export const getDefaultDashboardConfig = () => ({
   backgroundImage: null,
   ambientLightColor: '#b6d2ad',
   ambientLightEnabled: true,
+  weatherAnimationEnabled: true,
   cardStyle: 'glass', // Supported card styles: glass, transparent, and outline.
   cardBorder: 'rounded', // Supported card shapes: rounded and rectangle.
   dockPosition: 'bottom', // Supported minimized-widget dock positions: bottom, top, left, and right.
@@ -250,6 +251,7 @@ export const getDefaultDashboardConfig = () => ({
 export const getDefaultPomodoroConfig = () => ({
   duration: 20,
   breakDuration: 5,
+  progressStyle: 'pixel',
 });
 
 const normalizePomodoroConfig = (config = {}) => {
@@ -258,5 +260,6 @@ const normalizePomodoroConfig = (config = {}) => {
   return {
     duration: Number.isFinite(duration) && duration >= 1 ? Math.min(120, duration) : 20,
     breakDuration: Number.isFinite(breakDuration) && breakDuration >= 1 ? Math.min(60, breakDuration) : 5,
+    progressStyle: config.progressStyle === 'smooth' ? 'smooth' : 'pixel',
   };
 };

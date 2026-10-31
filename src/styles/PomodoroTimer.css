@@ -1,6 +1,8 @@
 /* Timer card layout and shared sizing. */
 .pomo-outer-card {
   position: relative;
+  container-type: inline-size;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -93,6 +95,7 @@
 /* Inline duration settings. */
 .pomo-settings-panel {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px;
   margin-top: 10px;
@@ -143,6 +146,29 @@
   font-size: 0.7rem;
 }
 
+.pomo-select {
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #f8fafc;
+  font-size: 0.7rem;
+}
+
+.pomo-select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.pomo-progress-style-field {
+  flex: 1 0 100%;
+  justify-content: space-between;
+}
+
+.pomo-select {
+  min-width: 90px;
+}
+
 /* Main timer display area. */
 .pomo-body {
   flex: 1;
@@ -154,6 +180,7 @@
   min-height: 0;
   overflow: visible;
   margin-top: 10px;
+  container-type: size;
 }
 
 .pomo-circle-stage {
@@ -163,12 +190,13 @@
   justify-content: center;
   width: 100%;
   min-height: 0;
+  container-type: size;
 }
 
 .pomo-dial-wrapper {
   position: relative;
-  height: 96%;
-  max-height: 96%;
+  width: min(96cqw, 96cqh);
+  height: min(96cqw, 96cqh);
   aspect-ratio: 1 / 1;
   display: flex;
   align-items: center;
@@ -182,15 +210,24 @@
   height: 108%;
 }
 
+.pomo-pixel-segment {
+  fill: rgba(255, 255, 255, 0.12);
+  transition: fill 180ms ease;
+}
+
+.pomo-pixel-segment.active {
+  fill: var(--dashboard-accent, #b6d2ad);
+}
+
 .pomo-track-circle {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.06);
+  stroke: rgba(255, 255, 255, 0.12);
   stroke-width: 4;
 }
 
 .pomo-progress-circle {
   fill: none;
-  stroke: url(#pomoGrad);
+  stroke: var(--dashboard-accent, #b6d2ad);
   stroke-width: 4;
   stroke-linecap: round;
   transform-origin: center;
@@ -216,6 +253,17 @@
   min-height: 0;
 }
 
+.widget .pomo-outer-card.view-timeline .pomo-timeline-stage {
+  justify-content: space-evenly;
+  gap: 0;
+}
+
+.widget:hover .pomo-outer-card.view-timeline .pomo-timeline-stage,
+.widget:focus-within .pomo-outer-card.view-timeline .pomo-timeline-stage {
+  justify-content: center;
+  gap: 10px;
+}
+
 .pomo-timeline-header {
   display: flex;
   align-items: center;
@@ -232,16 +280,27 @@
 
 .pomo-timeline-track {
   width: 100%;
-  height: 6px;
+  height: clamp(24px, 4cqh, 40px);
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
+  border-radius: 6px;
   overflow: hidden;
+}
+
+.pomo-timeline-track.smooth {
+  height: 6px;
+  border-radius: 999px;
+}
+
+.pomo-pixel-progress {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .pomo-timeline-fill {
   height: 100%;
-  background: linear-gradient(90deg, #38bdf8, #6366f1);
-  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dashboard-accent, #b6d2ad), color-mix(in srgb, var(--dashboard-accent, #b6d2ad) 62%, white));
+  border-radius: inherit;
   transition: width 0.8s linear;
 }
 
@@ -250,6 +309,236 @@
   justify-content: space-between;
   font-size: 0.6rem;
   color: #64748b;
+}
+
+/* Flip clock layout follows the timer widget's aspect ratio. */
+.pomo-outer-card.view-flip {
+  height: 100%;
+}
+
+.pomo-flip-stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  min-height: 0;
+  container-type: size;
+}
+
+.pomo-flip-clock {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: min(2cqh, 10px);
+  min-height: 0;
+}
+
+.pomo-flip-unit {
+  display: flex;
+  align-items: center;
+}
+
+.pomo-flip-separator {
+  color: #fff;
+  font-size: clamp(2rem, 8cqh, 5rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pomo-flip-digits {
+  display: flex;
+  gap: min(1cqh, 6px);
+}
+
+.pomo-flip-digit {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: min(22cqw, 28cqh, 150px);
+  aspect-ratio: 0.72;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #292929 0 50%, #171717 50% 100%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font-size: min(82cqh, 140px);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  perspective: 320px;
+}
+
+.pomo-flip-digit-face {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50%;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.pomo-flip-digit-face > span {
+  position: absolute;
+  left: 0;
+  display: flex;
+  width: 100%;
+  height: 200%;
+  align-items: center;
+  justify-content: center;
+}
+
+.pomo-flip-digit-top,
+.pomo-flip-flap-top {
+  top: 0;
+}
+
+.pomo-flip-digit-top {
+  z-index: 0;
+  background: #292929;
+}
+
+.pomo-flip-digit-bottom {
+  bottom: 0;
+  background: #171717;
+}
+
+.pomo-flip-flap-bottom {
+  z-index: 1;
+  bottom: 0;
+  background: #171717;
+  transform: rotateX(90deg);
+  transform-origin: top;
+  animation: pomo-flip-up 300ms 300ms ease-out both;
+  backface-visibility: hidden;
+}
+
+.pomo-flip-digit-top > span {
+  top: 0;
+}
+
+.pomo-flip-digit-bottom > span {
+  top: -100%;
+}
+
+.pomo-flip-flap-top {
+  z-index: 2;
+  background: #292929;
+  transform-origin: bottom;
+  transform-style: preserve-3d;
+  animation: pomo-flip-down 600ms ease-in both;
+  box-shadow: inset 0 -1px rgba(0, 0, 0, 0.65);
+  backface-visibility: hidden;
+}
+
+.pomo-flip-flap-top > span {
+  top: 0;
+}
+
+.pomo-flip-flap-bottom > span {
+  top: -100%;
+}
+
+.pomo-flip-flap-front {
+  background: #292929;
+  backface-visibility: hidden;
+}
+
+.pomo-flip-flap-back {
+  background: #292929;
+  transform: rotateX(180deg);
+  backface-visibility: hidden;
+}
+
+.pomo-flip-digit::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.45);
+  content: "";
+}
+
+.pomo-flip-vertical .pomo-flip-clock {
+  flex-direction: column;
+  gap: min(3cqh, 18px);
+}
+
+.pomo-flip-vertical .pomo-flip-separator {
+  display: none;
+}
+
+.pomo-flip-vertical .pomo-flip-digit {
+  width: auto;
+  height: min(48cqh, 280px);
+  aspect-ratio: 0.72;
+  font-size: min(42cqh, 120px);
+}
+
+.pomo-flip-horizontal .pomo-flip-digit {
+  width: min(23cqw, 62cqh, 170px);
+  height: auto;
+  aspect-ratio: 0.66;
+  font-size: min(28cqw, 50cqh, 140px);
+}
+
+.widget .pomo-outer-card.view-flip .pomo-actions {
+  display: none;
+}
+
+.widget .pomo-outer-card.view-flip .pomo-flip-stage > .pomo-timeline-header {
+  display: none;
+}
+
+.widget:hover .pomo-outer-card.view-flip .pomo-actions,
+.widget:focus-within .pomo-outer-card.view-flip .pomo-actions {
+  display: flex;
+}
+
+.widget:hover .pomo-outer-card.view-flip .pomo-flip-stage > .pomo-timeline-header,
+.widget:focus-within .pomo-outer-card.view-flip .pomo-flip-stage > .pomo-timeline-header {
+  display: flex;
+}
+
+@media (hover: none) {
+  .widget .pomo-outer-card.view-flip .pomo-actions {
+    display: flex;
+  }
+
+  .widget .pomo-outer-card.view-flip .pomo-flip-stage > .pomo-timeline-header {
+    display: flex;
+  }
+}
+
+@keyframes pomo-flip-down {
+  0% {
+    transform: rotateX(0);
+    box-shadow: none;
+  }
+  45% {
+    transform: rotateX(-90deg);
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.3);
+  }
+  100% {
+    transform: rotateX(-180deg);
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@keyframes pomo-flip-up {
+  from {
+    transform: rotateX(90deg);
+  }
+  to {
+    transform: rotateX(0);
+  }
 }
 
 /* Timer labels and numerical readouts. */
@@ -289,6 +578,76 @@
   justify-content: center;
 }
 
+/* Keep non-flip timer modes prominent until the widget is hovered or focused. */
+.widget .pomo-outer-card.view-circle .pomo-actions,
+.widget .pomo-outer-card.view-timeline .pomo-actions {
+  display: none;
+}
+
+.widget .pomo-outer-card.view-circle .pomo-dial-center > .pomo-status-tag,
+.widget .pomo-outer-card.view-circle .pomo-dial-center > .pomo-percentage-tag,
+.widget .pomo-outer-card.view-timeline .pomo-timeline-header,
+.widget .pomo-outer-card.view-timeline .pomo-timeline-labels {
+  display: none;
+}
+
+.widget .pomo-outer-card.view-circle .pomo-time-display {
+  font-size: clamp(2rem, min(18cqw, 18cqh), 4.5rem);
+  transition: font-size 180ms ease;
+}
+
+.widget .pomo-outer-card.view-timeline .pomo-time-display.large {
+  font-size: clamp(2rem, min(24cqw, 40cqh, 6rem), 6rem);
+  transition: font-size 180ms ease;
+}
+
+.widget:hover .pomo-outer-card.view-circle .pomo-actions,
+.widget:focus-within .pomo-outer-card.view-circle .pomo-actions,
+.widget:hover .pomo-outer-card.view-timeline .pomo-actions,
+.widget:focus-within .pomo-outer-card.view-timeline .pomo-actions {
+  display: flex;
+}
+
+.widget:hover .pomo-outer-card.view-circle .pomo-dial-center > .pomo-status-tag,
+.widget:focus-within .pomo-outer-card.view-circle .pomo-dial-center > .pomo-status-tag,
+.widget:hover .pomo-outer-card.view-circle .pomo-dial-center > .pomo-percentage-tag,
+.widget:focus-within .pomo-outer-card.view-circle .pomo-dial-center > .pomo-percentage-tag,
+.widget:hover .pomo-outer-card.view-timeline .pomo-timeline-header,
+.widget:focus-within .pomo-outer-card.view-timeline .pomo-timeline-header,
+.widget:hover .pomo-outer-card.view-timeline .pomo-timeline-labels,
+.widget:focus-within .pomo-outer-card.view-timeline .pomo-timeline-labels {
+  display: flex;
+}
+
+.widget:hover .pomo-outer-card.view-circle .pomo-time-display,
+.widget:focus-within .pomo-outer-card.view-circle .pomo-time-display {
+  font-size: clamp(1.8rem, min(15cqw, 15cqh), 3.2rem);
+}
+
+.widget:hover .pomo-outer-card.view-timeline .pomo-time-display.large,
+.widget:focus-within .pomo-outer-card.view-timeline .pomo-time-display.large {
+  font-size: clamp(2rem, min(18cqw, 18cqh), 3.8rem);
+}
+
+@media (hover: none) {
+  .widget .pomo-outer-card.view-circle .pomo-actions,
+  .widget .pomo-outer-card.view-timeline .pomo-actions {
+    display: flex;
+  }
+
+  .widget .pomo-outer-card.view-timeline .pomo-timeline-stage {
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .widget .pomo-outer-card.view-circle .pomo-dial-center > .pomo-status-tag,
+  .widget .pomo-outer-card.view-circle .pomo-dial-center > .pomo-percentage-tag,
+  .widget .pomo-outer-card.view-timeline .pomo-timeline-header,
+  .widget .pomo-outer-card.view-timeline .pomo-timeline-labels {
+    display: flex;
+  }
+}
+
 .pomo-colon {
   color: #f8fafc;
   margin: 0 -1px;
@@ -302,6 +661,53 @@
   gap: 10px;
   flex-shrink: 0;
   margin-top: 6px;
+}
+
+@media (max-width: 600px) {
+  .pomo-settings-panel {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+
+  .pomo-presets {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .pomo-chip {
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 2px;
+    font-size: 0.68rem;
+  }
+
+  .pomo-field {
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    font-size: 0.62rem;
+  }
+
+  .pomo-field {
+    grid-column: span 2;
+  }
+
+  .pomo-input,
+  .pomo-select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 5px 6px;
+    font-size: 0.75rem;
+  }
 }
 
 .pomo-btn-main {
