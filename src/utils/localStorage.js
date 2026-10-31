@@ -62,7 +62,7 @@ export const storageManager = {
   },
   getNoteWall: () => {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTE_WALL);
-    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [] };
+    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
     try {
       const wall = JSON.parse(saved);
       return {
@@ -71,9 +71,18 @@ export const storageManager = {
         taskPositions: wall?.taskPositions && typeof wall.taskPositions === 'object' ? wall.taskPositions : {},
         connections: Array.isArray(wall?.connections) ? wall.connections : [],
         attachments: Array.isArray(wall?.attachments) ? wall.attachments : [],
+        webClips: Array.isArray(wall?.webClips) ? wall.webClips : [],
+        comments: wall?.comments && typeof wall.comments === 'object' && !Array.isArray(wall.comments)
+          ? Object.fromEntries(Object.entries(wall.comments).map(([key, comments]) => [
+            key,
+            Array.isArray(comments)
+              ? comments.filter((comment) => comment && typeof comment === 'object' && typeof comment.id === 'string' && typeof comment.text === 'string')
+              : [],
+          ]))
+          : {},
       };
     } catch {
-      return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [] };
+      return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
     }
   },
   saveNoteCategories: (categories) => {

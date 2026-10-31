@@ -510,6 +510,30 @@
 
 .note-wall-open:hover { text-decoration: underline; }
 
+.note-wall-comments-trigger {
+  position: absolute;
+  z-index: 4;
+  top: 0.55rem;
+  right: 2.25rem;
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0 0.3rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.12);
+  color: #172033;
+  font: inherit;
+  font-size: 0.6rem;
+  cursor: pointer;
+}
+
+.note-wall-comments-trigger:hover { background: rgba(15, 23, 42, 0.22); }
+.note-wall-comments-trigger span { font-variant-numeric: tabular-nums; }
+
 .note-wall-card p {
   display: -webkit-box;
   margin: 0;
@@ -674,6 +698,8 @@
 
 .note-wall-attachment-remove:hover { border-color: #ef4444; color: #ef4444; }
 .note-wall-attachment > .note-wall-unlink { z-index: 3; right: 2.3rem; }
+.note-wall-attachment > .note-wall-comments-trigger { top: 0.5rem; right: 2.35rem; background: var(--lp-bg); color: var(--lp-text); }
+.note-wall-attachment > .note-wall-comments-trigger:hover { background: var(--lp-line); }
 
 .note-wall-attachment-preview {
   display: grid;
@@ -698,6 +724,82 @@
 .note-wall-attachment-preview p { max-width: 100%; margin: 0; padding: 0.65rem; color: var(--lp-muted); font-size: 0.65rem; overflow-wrap: anywhere; }
 .note-wall-attachment button:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
 
+.note-wall-webclip {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  min-width: 220px;
+  min-height: 190px;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 10px;
+  background: var(--lp-surface-raised);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+  color: var(--lp-text);
+}
+
+.note-wall-webclip:focus-within { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
+.note-wall-webclip-move {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow: hidden;
+  padding: 0 2rem 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--lp-muted);
+  font: inherit;
+  font-size: 0.58rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+}
+.note-wall-webclip-move:active { cursor: grabbing; }
+.note-wall-webclip-move > span:first-child { flex: 0 0 auto; font-size: 0.95rem; }
+.note-wall-webclip > .note-wall-comments-trigger { top: 0.5rem; right: 0.5rem; background: var(--lp-bg); color: var(--lp-text); }
+.note-wall-webclip-image { width: 100%; max-height: 90px; flex: 0 0 auto; border-radius: 5px; object-fit: cover; }
+.note-wall-webclip-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--lp-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.note-wall-webclip-title:hover { color: var(--lp-accent); text-decoration: underline; }
+.note-wall-webclip-description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--lp-muted);
+  font-size: 0.64rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.note-wall-webclip-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+  margin-top: auto;
+  color: var(--lp-soft);
+  font-size: 0.56rem;
+}
+.note-wall-webclip-meta a { max-width: 100%; overflow: hidden; color: var(--lp-accent); text-overflow: ellipsis; white-space: nowrap; }
+.note-wall-webclip button:focus-visible,
+.note-wall-webclip a:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
+
 .note-wall-task {
   position: absolute;
   z-index: 2;
@@ -710,6 +812,14 @@
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.18);
   color: var(--lp-text);
 }
+
+.note-wall-task > .note-wall-comments-trigger {
+  top: 0.45rem;
+  right: 0.45rem;
+  background: var(--lp-surface);
+  color: var(--lp-muted);
+}
+.note-wall-task > .note-wall-comments-trigger:hover { background: var(--lp-line); color: var(--lp-text); }
 
 .note-wall-task-move {
   display: flex;
@@ -839,6 +949,96 @@
 .note-wall-clear-tidy:hover { background: #762f35; color: #fff; }
 .note-wall-delete-confirm { border-color: #b45353; background: #762f35; color: #fff; }
 .note-wall-delete-confirm:hover { background: #943b43; }
+
+.note-wall-thread-dialog {
+  display: flex;
+  width: min(580px, 100%);
+  max-height: min(82vh, 760px);
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.note-wall-thread-dialog h2 {
+  margin: 0 2.5rem 0 0;
+  overflow-wrap: anywhere;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+}
+
+.note-wall-thread-list {
+  display: flex;
+  min-height: 100px;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-y: auto;
+  padding: 0.15rem 0.15rem 0.15rem 0;
+}
+
+.note-wall-thread-comment {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 8px;
+  background: var(--lp-surface);
+}
+
+.note-wall-thread-comment-meta,
+.note-wall-thread-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.note-wall-thread-comment-meta strong { color: var(--lp-text); font-size: 0.72rem; }
+.note-wall-thread-comment-meta time { color: var(--lp-soft); font-size: 0.6rem; }
+.note-wall-thread-comment p { margin: 0.45rem 0 0; color: var(--lp-muted); font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-wall-thread-empty { margin: auto; color: var(--lp-muted); font-size: 0.75rem; text-align: center; }
+
+.note-wall-thread-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--lp-line);
+}
+
+.note-wall-thread-form label { color: var(--lp-text); font-size: 0.72rem; font-weight: 700; }
+.note-wall-thread-form textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 7px;
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.note-wall-thread-form textarea:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
+.note-wall-thread-form-footer > span { color: var(--lp-soft); font-size: 0.62rem; }
+.note-wall-thread-form-footer button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.note-wall-webclipper-dialog { width: min(620px, 100%); }
+.note-wall-webclipper-dialog h2 { margin: 0 2rem 0.5rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.6rem; font-weight: 400; }
+.note-wall-webclipper-dialog > p { font-size: 0.75rem; }
+.note-wall-webclipper-steps { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.8rem 0; padding-left: 1.35rem; color: var(--lp-muted); font-size: 0.72rem; }
+.note-wall-webclipper-code-label { color: var(--lp-text); font-size: 0.7rem; font-weight: 700; }
+.note-wall-webclipper-code {
+  width: 100%;
+  resize: vertical;
+  padding: 0.65rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 6px;
+  background: var(--lp-bg);
+  color: var(--lp-muted);
+  font: 0.62rem/1.45 Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.note-wall-webclipper-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.note-wall-webclipper-note { margin-top: 0.4rem !important; color: var(--lp-soft) !important; font-size: 0.64rem !important; }
 .note-wall-cancel-tidy:hover { border-color: var(--lp-accent); }
 
 .note-wall-modal h2 { margin: 0 2rem 1rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.7rem; font-weight: 400; }
@@ -883,7 +1083,7 @@
   @page { size: landscape; margin: 10mm; }
   html, body, #root { width: 100%; height: auto; overflow: visible !important; background: #fff !important; }
   .note-wall-page { display: block; height: auto; overflow: visible; background: #fff; color: #111827; }
-  .note-wall-toolbar, .note-wall-controls, .note-wall-footer, .note-wall-drag-handle, .note-wall-attachment-move, .note-wall-attachment-remove, .note-wall-unlink, .note-wall-connect-handle, .note-wall-resize-handle, .note-wall-task-move, .note-wall-task-connect, .note-wall-task-details, .note-wall-modal-backdrop { display: none !important; }
+  .note-wall-toolbar, .note-wall-controls, .note-wall-footer, .note-wall-drag-handle, .note-wall-attachment-move, .note-wall-attachment-remove, .note-wall-webclip-move, .note-wall-unlink, .note-wall-connect-handle, .note-wall-resize-handle, .note-wall-task-move, .note-wall-task-connect, .note-wall-task-details, .note-wall-modal-backdrop { display: none !important; }
   .note-wall-scroll { overflow: visible; background: #fff; }
   .note-wall-board { min-width: 0; min-height: 0; transform: scale(var(--wall-print-scale)); transform-origin: top left; }
   .note-wall-connections { print-color-adjust: exact; }

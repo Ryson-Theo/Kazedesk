@@ -42,7 +42,7 @@ export function exportWallJSON(notes, categories, wall) {
   return data;
 }
 
-export function exportWallMarkdown(notes, attachments = []) {
+export function exportWallMarkdown(notes, attachments = [], webClips = []) {
   const grouped = new Map();
   notes.forEach((note) => {
     const category = note.category || 'Inbox';
@@ -65,6 +65,15 @@ export function exportWallMarkdown(notes, attachments = []) {
       `- ${attachment.name} (${attachment.mediaType}; ${attachment.mimeType})`,
     ));
     lines.push('', 'Attachment contents remain stored in this browser and are not included in this Markdown file.', '');
+  }
+  if (webClips.length) {
+    lines.push('## Web clips', '');
+    webClips.forEach((clip) => {
+      const title = clip.title.replaceAll('[', '\\[').replaceAll(']', '\\]');
+      lines.push(`- [${title}](<${clip.url}>) — ${clip.siteName}`);
+      if (clip.description) lines.push(`  ${clip.description}`);
+    });
+    lines.push('');
   }
   downloadBlob(new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }), 'kazedesk-note-wall.md');
 }
@@ -119,7 +128,7 @@ function getConnectionSvgPath(start, end, fromAnchor, toAnchor, curved) {
   return `M ${start.x} ${start.y} C ${start.x + from.x * distance} ${start.y + from.y * distance}, ${end.x + to.x * distance} ${end.y + to.y * distance}, ${end.x} ${end.y}`;
 }
 
-export async function exportWallPNG(notes, wall, tasks = [], attachments = [], attachmentUrls = {}) {
+export async function exportWallPNG(notes, wall, tasks = [], attachments = [], attachmentUrls = {}, webClips = []) {
   const positions = wall.positions || {};
   const taskPositions = wall.taskPositions || {};
   const sizes = wall.sizes || {};
@@ -129,16 +138,20 @@ export async function exportWallPNG(notes, wall, tasks = [], attachments = [], a
       ? tasks.some((task) => String(task.id) === String(connection[side]))
       : type === 'attachment'
         ? attachments.some((attachment) => String(attachment.id) === String(connection[side]))
-        : notes.some((note) => String(note.id) === String(connection[side]));
+        : type === 'webclip'
+          ? webClips.some((clip) => String(clip.id) === String(connection[side]))
+          : notes.some((note) => String(note.id) === String(connection[side]));
   };
   const connections = (wall.connections || []).filter((connection) => endpointExists(connection, 'from') && endpointExists(connection, 'to'));
   const width = Math.max(1100,
     ...notes.map((note) => (positions[note.id]?.x || 0) + (sizes[note.id]?.width || 250) + 40),
     ...attachments.map((attachment) => (positions[attachment.id]?.x || 0) + (sizes[attachment.id]?.width || 300) + 40),
+    ...webClips.map((clip) => (positions[clip.id]?.x || 0) + (sizes[clip.id]?.width || 320) + 40),
     ...tasks.map((task) => (taskPositions[task.id]?.x || 0) + 190));
   const height = Math.max(720,
     ...notes.map((note) => (positions[note.id]?.y || 0) + (sizes[note.id]?.height || 190) + 40),
     ...attachments.map((attachment) => (positions[attachment.id]?.y || 0) + (sizes[attachment.id]?.height || 250) + 40),
+    ...webClips.map((clip) => (positions[clip.id]?.y || 0) + (sizes[clip.id]?.height || 260) + 40),
     ...tasks.map((task) => (taskPositions[task.id]?.y || 0) + 60));
   const links = connections.map((connection) => {
     const fromIsTask = connection.fromType === 'task';
@@ -147,8 +160,10 @@ export async function exportWallPNG(notes, wall, tasks = [], attachments = [], a
     const to = (toIsTask ? taskPositions : positions)[connection.to] || { x: 40, y: 40 };
     const fromIsAttachment = connection.fromType === 'attachment';
     const toIsAttachment = connection.toType === 'attachment';
-    const fromSize = fromIsTask ? { width: 180, height: 42 } : sizes[connection.from] || (fromIsAttachment ? { width: 300, height: 250 } : { width: 250, height: 190 });
-    const toSize = toIsTask ? { width: 180, height: 42 } : sizes[connection.to] || (toIsAttachment ? { width: 300, height: 250 } : { width: 250, height: 190 });
+    const fromIsWebClip = connection.fromType === 'webclip';
+    const toIsWebClip = connection.toType === 'webclip';
+    const fromSize = fromIsTask ? { width: 180, height: 42 } : sizes[connection.from] || (fromIsAttachment ? { width: 300, height: 250 } : fromIsWebClip ? { width: 320, height: 260 } : { width: 250, height: 190 });
+    const toSize = toIsTask ? { width: 180, height: 42 } : sizes[connection.to] || (toIsAttachment ? { width: 300, height: 250 } : toIsWebClip ? { width: 320, height: 260 } : { width: 250, height: 190 });
     const dash = connection.style === 'dotted' ? ' stroke-dasharray="3 9"' : connection.style === 'dashed' ? ' stroke-dasharray="12 8"' : '';
     const start = getConnectionAnchor(from, fromSize, connection.fromAnchor);
     const end = getConnectionAnchor(to, toSize, connection.toAnchor);
@@ -185,7 +200,16 @@ export async function exportWallPNG(notes, wall, tasks = [], attachments = [], a
       : `<text x="12" y="72" font-family="Arial,sans-serif" font-size="14" fill="#cbd5e1">${escapeXml(attachment.mediaType.toUpperCase())} attachment</text>`;
     return `<g transform="translate(${position.x} ${position.y})"><rect width="${dimensions.width}" height="${dimensions.height}" rx="10" fill="#1e293b" stroke="#64748b"/><text x="12" y="25" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#f8fafc">${title}</text>${image}</g>`;
   }).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#111827"/>${links}${cards}${taskCards}${attachmentCards}</svg>`;
+  const webClipCards = webClips.map((clip) => {
+    const position = positions[clip.id] || { x: 40, y: 40 };
+    const dimensions = sizes[clip.id] || { width: 320, height: 260 };
+    const title = escapeXml(clip.title);
+    const site = escapeXml(clip.siteName);
+    const url = escapeXml(clip.url);
+    const description = escapeXml(wrapText(clip.description || clip.url, 46).slice(0, 3).join(' '));
+    return `<g transform="translate(${position.x} ${position.y})"><rect width="${dimensions.width}" height="${dimensions.height}" rx="10" fill="#1e293b" stroke="#64748b"/><text x="12" y="24" font-family="Arial,sans-serif" font-size="10" fill="#94a3b8">${site}</text><text x="12" y="48" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#f8fafc">${title}</text><text x="12" y="72" font-family="Arial,sans-serif" font-size="11" fill="#cbd5e1">${description}</text><text x="12" y="${dimensions.height - 14}" font-family="Arial,sans-serif" font-size="9" fill="#72d5ff">${url}</text></g>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#111827"/>${links}${cards}${taskCards}${attachmentCards}${webClipCards}</svg>`;
   const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const image = new Image();

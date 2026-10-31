@@ -75,4 +75,21 @@ describe('tidyWallLayout', () => {
     });
     expect(result.taskPositions['task-1']).not.toEqual(result.positions['note-1']);
   });
+
+  it('includes web clip nodes in tidy spacing and preserves their connection type', () => {
+    const notes = [{ id: 'note-1' }];
+    const clips = [{ id: 'clip-1', type: 'webclip' }];
+    const result = tidyWallLayout([...notes, ...clips], {
+      positions: { 'note-1': { x: 100, y: 100 }, 'clip-1': { x: 100, y: 100 } },
+      sizes: {},
+      connections: [{ id: 'clip-link', from: 'clip-1', fromType: 'webclip', to: 'note-1', toType: 'note' }],
+    });
+
+    expect(result.positions['clip-1']).not.toEqual(result.positions['note-1']);
+    expect(result.connections[0]).toMatchObject({
+      fromType: 'webclip',
+      toType: 'note',
+      curved: true,
+    });
+  });
 });
