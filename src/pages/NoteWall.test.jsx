@@ -3,6 +3,18 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteWall from './NoteWall';
 import { storageManager } from '../utils/localStorage';
+import * as noteWallMedia from '../utils/noteWallMedia';
+
+vi.mock('../utils/noteWallMedia', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    saveWallAttachment: vi.fn(),
+    getWallAttachment: vi.fn(),
+    deleteWallAttachment: vi.fn(),
+    pruneWallAttachments: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 describe('NoteWall', () => {
   beforeEach(() => {
@@ -52,6 +64,100 @@ describe('NoteWall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }));
     expect(screen.getByRole('main')).toHaveClass('landing-theme-light');
     expect(localStorage.getItem('kazedesk-landing-theme')).toBe('light');
+  });
+
+  it('uploads an image as a movable wall node, previews it, and removes its stored file', async () => {
+    noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
+    noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['image bytes'], { type: 'image/png' }));
+    noteWallMedia.deleteWallAttachment.mockReset().mockResolvedValue(undefined);
+    const createObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:wall-image') });
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      const file = new File(['image bytes'], 'preview.png', { type: 'image/png' });
+      fireEvent.change(screen.getByLabelText('Choose image, PDF, or audio attachment'), { target: { files: [file] } });
+
+      expect(await screen.findByAltText('preview.png')).toHaveAttribute('src', 'blob:wall-image');
+      expect(noteWallMedia.saveWallAttachment).toHaveBeenCalledWith(expect.any(String), file);
+      const [attachment] = storageManager.getNoteWall().attachments;
+      expect(attachment).toMatchObject({ name: 'preview.png', mimeType: 'image/png', mediaType: 'image', size: file.size });
+      expect(storageManager.getNoteWall().positions[attachment.id]).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+
+      const startPosition = storageManager.getNoteWall().positions[attachment.id];
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Move attachment preview.png' }), { clientX: 100, clientY: 100 });
+      fireEvent.pointerMove(window, { clientX: 160, clientY: 140 });
+      fireEvent.pointerUp(window, { clientX: 160, clientY: 140 });
+      await waitFor(() => expect(storageManager.getNoteWall().positions[attachment.id].x).toBe(startPosition.x + 60));
+
+      const startSize = storageManager.getNoteWall().sizes[attachment.id];
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Resize attachment preview.png' }), { clientX: 300, clientY: 250 });
+      fireEvent.pointerMove(window, { clientX: 340, clientY: 280 });
+      fireEvent.pointerUp(window, { clientX: 340, clientY: 280 });
+      await waitFor(() => expect(storageManager.getNoteWall().sizes[attachment.id]).toMatchObject({ width: startSize.width + 40, height: startSize.height + 30 }));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove attachment preview.png' }));
+      expect(screen.getByRole('alertdialog')).toHaveTextContent('You can undo this action');
+      expect(storageManager.getNoteWall().attachments).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(storageManager.getNoteWall().attachments).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove attachment preview.png' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove attachment', exact: true }));
+      await waitFor(() => expect(storageManager.getNoteWall().attachments).toHaveLength(0));
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+      expect(noteWallMedia.deleteWallAttachment).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(storageManager.getNoteWall().attachments).toHaveLength(1));
+      expect(await screen.findByAltText('preview.png')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+      await waitFor(() => expect(storageManager.getNoteWall().attachments).toHaveLength(0));
+    } finally {
+      if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
+      else delete URL.createObjectURL;
+    }
+  });
+
+  it('reports unsupported attachment files without storing them', async () => {
+    noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Choose image, PDF, or audio attachment'), {
+      target: { files: [new File(['markup'], 'unsafe.svg', { type: 'image/svg+xml' })] },
+    });
+
+    expect(await screen.findByText(/Supported files:/)).toBeInTheDocument();
+    expect(noteWallMedia.saveWallAttachment).not.toHaveBeenCalled();
+    expect(storageManager.getNoteWall().attachments).toHaveLength(0);
+  });
+
+  it('renders embedded PDF and audio controls from stored attachment nodes', async () => {
+    const attachments = [
+      { id: 'pdf-1', name: 'guide.pdf', mimeType: 'application/pdf', mediaType: 'pdf', size: 12, category: 'Inbox' },
+      { id: 'audio-1', name: 'clip.mp3', mimeType: 'audio/mpeg', mediaType: 'audio', size: 8, category: 'Inbox' },
+    ];
+    storageManager.saveNoteWall({
+      positions: { 'pdf-1': { x: 30, y: 30 }, 'audio-1': { x: 360, y: 30 } },
+      sizes: {},
+      taskPositions: {},
+      connections: [],
+      attachments,
+    });
+    noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['preview']));
+    let urlIndex = 0;
+    const createObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => `blob:attachment-${urlIndex++}`) });
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      expect(await screen.findByTitle('PDF preview: guide.pdf')).toHaveAttribute('src', 'blob:attachment-0');
+      expect(await screen.findByLabelText('Play clip.mp3')).toHaveAttribute('controls');
+      expect(document.querySelector('[data-node-type="attachment"][data-node-id="audio-1"]')).toBeInTheDocument();
+    } finally {
+      if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
+      else delete URL.createObjectURL;
+    }
   });
 
   it('opens the full note content and supports drag-to-connect and resizing', async () => {
@@ -346,6 +452,6 @@ describe('NoteWall', () => {
         });
       });
     });
-    expect(screen.getByRole('status')).toHaveTextContent(/Board tidied and saved locally/);
+    expect(screen.getByText(/Board tidied and saved locally/)).toBeInTheDocument();
   });
 });
