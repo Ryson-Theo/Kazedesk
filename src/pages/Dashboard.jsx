@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, CheckSquare, GripVertical, Moon, Music2, Network, StickyNote, Sun } from "lucide-react";
+import { BarChart3, CheckSquare, GripVertical, LayoutGrid, Moon, Music2, Network, StickyNote, Sun } from "lucide-react";
 
 import AmbientLightStrip from "../components/AmbientLightStrip";
 import DashboardSettings from "../components/DashboardSettings";
@@ -657,6 +657,7 @@ export default function Dashboard() {
         <div className="dashboard-control-cluster">
           <DashboardSettings config={dashboardConfig} onConfigChange={handleConfigChange} onResetLayout={handleResetLayout} />
           <div className="dashboard-top-actions">
+            <Link className="wall-open-link" to="/wall/boards"><LayoutGrid size={16} /> Boards</Link>
             <Link className="wall-open-link" to="/wall"><Network size={16} /> NoteMap</Link>
             <button type="button" className="dashboard-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
               {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}

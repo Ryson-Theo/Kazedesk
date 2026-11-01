@@ -257,7 +257,9 @@ describe('TaskCard', () => {
   });
 
   it('uses a native time input for reminder edits and provides an in-panel close action', () => {
-    const reminder = new Date(2026, 9, 31, 15, 45).toISOString();
+    const reminderDate = new Date();
+    reminderDate.setHours(15, 45, 0, 0);
+    const reminder = reminderDate.toISOString();
     localStorage.setItem('kazedesk_tasks', JSON.stringify([
       { id: 8, title: 'Focus block', completed: false, priority: 'medium', reminder },
     ]));

@@ -14,7 +14,8 @@
 - A focus timer with configurable work and break durations.
 - Tasks with reminders, nested subtasks, daily repeat controls, and user-created folders.
 - Rich-text sticky notes with user-created folders and per-note tags.
-- A resizable sticky-note wall with folder/tag filtering, compact task cards with hover details, a toggle to hide Inbox/unfiled tasks, and undo/redo for wall edits. Same-folder note links are solid, shared-tag note links are dotted, and task-to-note links in custom folders are dashed. Automatically managed crossing links use distinct colors adapted to dark/light mode; manually chosen line colors are preserved. Tidy-and-center creates missing eligible relationships, spaces and centers the visible board, and confirms whether to keep or clear existing lines. Wall changes autosave locally with visible save feedback; links can be curved or straight with selectable card/line colors. Includes full-note viewing, board panning and zooming, PNG/PDF/Markdown/JSON export, and optional private Google Drive saves.
+- Named, independent note-wall boards with their own notes, tasks, folders, attachments, web clips, comments, connections, and layouts. Board notes support editable Markdown with a safe preview (including tables, images, task lists, footnotes, and common inline syntax), hoverable paperclip-style link previews with best-effort site metadata, and folder creation in the note editor. Markdown links are automatically pinned as draggable paperclip cards when saved; external web clips can be attached from their pin menu. Link cards use compact rectangles, expand on hover, stack near the note, and follow it when moved. Use each link card's three-dot menu to edit or delete it; menus dismiss on outside click or Escape. Note cards reveal more preview content on hover and use a rounded folder-tab footer for folder and tag labels. The existing dashboard note wall remains separate and unchanged.
+- A resizable sticky-note wall with folder/tag filtering, compact task cards with hover details, a toggle to hide Inbox/unfiled tasks, and undo/redo for wall edits. Pin a web link directly or clip a page with the browser bookmarklet, then move the card beside notes and connect it to related ideas. Web clips use compact label-sized rectangles that expand on hover to show available page thumbnails, author, and metadata; sites that block browser access can still be clipped with the bookmarklet. Same-folder note links are solid, shared-tag note links are dotted, and task-to-note links in custom folders are dashed. Automatically managed crossing links use distinct colors adapted to dark/light mode; manually chosen line colors are preserved. Tidy-and-center creates missing eligible relationships, spaces and centers the visible board, and confirms whether to keep or clear existing lines. Wall changes autosave locally with visible save feedback; links can be curved or straight with selectable card/line colors. Includes full-note viewing, board panning and zooming, PNG/PDF/Markdown/JSON export, and optional private Google Drive saves.
 - Focus-session analytics stored locally.
 - A weather and clock widget, with city lookup and forecasts from Open-Meteo.
 - YouTube playlist playback (public playlists only).
@@ -62,7 +63,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (usually `http://localhost:5173`). The landing page is at `/`, the workspace is at `/dashboard`, and the sticky-note wall is at `/wall`.
+Open the local URL printed by Vite (usually `http://localhost:5173`). The landing page is at `/`, the workspace is at `/dashboard`, the dashboard-connected sticky-note wall is at `/wall`, and independent named boards are managed at `/wall/boards`.
 
 ### Optional Google Drive saves
 

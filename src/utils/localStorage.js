@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   STICKY_NOTES: 'kazedesk_sticky_notes',
   NOTE_CATEGORIES: 'kazedesk_note_categories',
   NOTE_WALL: 'kazedesk_note_wall',
+  NOTE_WALL_BOARDS: 'kazedesk_note_wall_boards',
   TASKS: 'kazedesk_tasks',
   TASK_CATEGORIES: 'kazedesk_task_categories',
   POMODORO_CONFIG: 'kazedesk_pomodoro_config',
@@ -14,6 +15,46 @@ const STORAGE_KEYS = {
   CURRENT_YOUTUBE_PLAYLIST: 'kazedesk_current_youtube_playlist',
   ANALYTICS_EVENTS: 'kazedesk_analytics_events',
 };
+
+function getEmptyNoteWall() {
+  return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
+}
+
+function normalizeNoteWall(wall) {
+  return {
+    positions: wall?.positions && typeof wall.positions === 'object' ? wall.positions : {},
+    sizes: wall?.sizes && typeof wall.sizes === 'object' ? wall.sizes : {},
+    taskPositions: wall?.taskPositions && typeof wall.taskPositions === 'object' ? wall.taskPositions : {},
+    connections: Array.isArray(wall?.connections) ? wall.connections : [],
+    attachments: Array.isArray(wall?.attachments) ? wall.attachments : [],
+    webClips: Array.isArray(wall?.webClips) ? wall.webClips : [],
+    comments: wall?.comments && typeof wall.comments === 'object' && !Array.isArray(wall.comments)
+      ? Object.fromEntries(Object.entries(wall.comments).map(([key, comments]) => [
+        key,
+        Array.isArray(comments)
+          ? comments.filter((comment) => comment && typeof comment === 'object' && typeof comment.id === 'string' && typeof comment.text === 'string')
+          : [],
+      ]))
+      : {},
+  };
+}
+
+function normalizeBoardName(value) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Enter a name for this board.');
+  const name = value.trim().slice(0, 80);
+  return name;
+}
+
+function normalizeNoteWallBoard(board) {
+  return {
+    ...board,
+    notes: Array.isArray(board.notes) ? board.notes : [],
+    tasks: Array.isArray(board.tasks) ? board.tasks : [],
+    categories: Array.isArray(board.categories) && board.categories.length ? board.categories : ['Inbox'],
+    taskCategories: Array.isArray(board.taskCategories) && board.taskCategories.length ? board.taskCategories : ['Inbox'],
+    wall: normalizeNoteWall(board.wall),
+  };
+}
 
 export const storageManager = {
   // Dashboard appearance and behavior preferences.
@@ -62,28 +103,77 @@ export const storageManager = {
   },
   getNoteWall: () => {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTE_WALL);
-    if (!saved) return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
+    if (!saved) return getEmptyNoteWall();
     try {
-      const wall = JSON.parse(saved);
-      return {
-        positions: wall?.positions && typeof wall.positions === 'object' ? wall.positions : {},
-        sizes: wall?.sizes && typeof wall.sizes === 'object' ? wall.sizes : {},
-        taskPositions: wall?.taskPositions && typeof wall.taskPositions === 'object' ? wall.taskPositions : {},
-        connections: Array.isArray(wall?.connections) ? wall.connections : [],
-        attachments: Array.isArray(wall?.attachments) ? wall.attachments : [],
-        webClips: Array.isArray(wall?.webClips) ? wall.webClips : [],
-        comments: wall?.comments && typeof wall.comments === 'object' && !Array.isArray(wall.comments)
-          ? Object.fromEntries(Object.entries(wall.comments).map(([key, comments]) => [
-            key,
-            Array.isArray(comments)
-              ? comments.filter((comment) => comment && typeof comment === 'object' && typeof comment.id === 'string' && typeof comment.text === 'string')
-              : [],
-          ]))
-          : {},
-      };
+      return normalizeNoteWall(JSON.parse(saved));
     } catch {
-      return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
+      return getEmptyNoteWall();
     }
+  },
+  getNoteWallBoards: () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.NOTE_WALL_BOARDS);
+      const boards = saved ? JSON.parse(saved) : [];
+      return Array.isArray(boards)
+        ? boards.filter((board) => board && typeof board.id === 'string' && typeof board.name === 'string').map(normalizeNoteWallBoard)
+        : [];
+    } catch {
+      return [];
+    }
+  },
+  getNoteWallBoard: (id) => storageManager.getNoteWallBoards().find((board) => board.id === id) || null,
+  createNoteWallBoard: (value) => {
+    const name = normalizeBoardName(value);
+    const boards = storageManager.getNoteWallBoards();
+    if (boards.some((board) => board.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      throw new Error('A board with this name already exists.');
+    }
+    const now = new Date().toISOString();
+    const board = {
+      id: crypto.randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+      notes: [],
+      tasks: [],
+      categories: ['Inbox'],
+      taskCategories: ['Inbox'],
+      wall: getEmptyNoteWall(),
+    };
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify([...boards, board]));
+    return board;
+  },
+  updateNoteWallBoard: (id, updates) => {
+    const boards = storageManager.getNoteWallBoards();
+    const index = boards.findIndex((board) => board.id === id);
+    if (index < 0) throw new Error('This board no longer exists.');
+    const nextUpdates = { ...updates };
+    if (Object.hasOwn(nextUpdates, 'name')) {
+      nextUpdates.name = normalizeBoardName(nextUpdates.name);
+      if (boards.some((board) => board.id !== id && board.name.toLocaleLowerCase() === nextUpdates.name.toLocaleLowerCase())) {
+        throw new Error('A board with this name already exists.');
+      }
+    }
+    const updated = normalizeNoteWallBoard({
+      ...boards[index],
+      ...nextUpdates,
+      updatedAt: new Date().toISOString(),
+    });
+    boards[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify(boards));
+    return updated;
+  },
+  deleteNoteWallBoard: (id) => {
+    const boards = storageManager.getNoteWallBoards();
+    const nextBoards = boards.filter((board) => board.id !== id);
+    if (boards.length === nextBoards.length) return false;
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify(nextBoards));
+    return true;
+  },
+  saveNoteWallBoard: (id, updates) => {
+    const board = storageManager.getNoteWallBoard(id);
+    if (!board) throw new Error('This board no longer exists.');
+    return storageManager.updateNoteWallBoard(id, { ...updates, name: board.name });
   },
   saveNoteCategories: (categories) => {
     const normalized = Array.isArray(categories)

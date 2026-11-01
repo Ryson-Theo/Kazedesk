@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, Download, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, Hand, Link2, MessageCircle, Moon, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, CheckCircle2, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Moon, Pencil, Pin, Plus, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import MarkdownContent from '../components/MarkdownContent';
 import { storageManager } from '../utils/localStorage';
 import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
 import { tidyWallLayout } from '../utils/noteWallLayout';
 import { addRelatedWallConnections, getWallRelationColor } from '../utils/noteWallRelations';
 import { recolorIntersectingConnections } from '../utils/noteWallIntersections';
 import { getWallAttachment, MAX_WALL_ATTACHMENT_SIZE, pruneWallAttachments, saveWallAttachment, validateWallAttachment } from '../utils/noteWallMedia';
-import { createWebClipperBookmarklet, decodeWebClipPayload } from '../utils/noteWallWebClipper';
+import { createWebClipperBookmarklet, decodeWebClipPayload, fetchWebClipMetadata, normalizeWebClip } from '../utils/noteWallWebClipper';
 import '../styles/NoteWall.css';
 
 const GOOGLE_DRIVE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -30,8 +31,120 @@ const ANCHOR_DIRECTIONS = {
 };
 const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
 const DEFAULT_WEB_CLIP_SIZE = { width: 320, height: 260 };
+const DEFAULT_BOARD_TASK_CATEGORIES = ['Inbox'];
 
-function getNextAttachmentPosition(wall, notes, tasks) {
+function getCompactWebClipSize(clip) {
+  const labelLength = Math.max(clip.title?.length || 0, clip.siteName?.length || 0);
+  return { width: Math.max(190, Math.min(260, 100 + labelLength * 6)), height: 68 };
+}
+
+function getPinnedLinkWidth(label) {
+  return Math.max(190, Math.min(280, 110 + String(label || '').length * 7));
+}
+
+function getMarkdownLinks(source) {
+  const markdownPattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi;
+  const found = [];
+  const ranges = [];
+  let match;
+  while ((match = markdownPattern.exec(source))) {
+    found.push({ label: match[1].trim(), url: match[2] });
+    ranges.push([match.index, markdownPattern.lastIndex]);
+  }
+  const plainText = source.split('');
+  ranges.forEach(([start, end]) => {
+    for (let index = start; index < end; index += 1) plainText[index] = ' ';
+  });
+  const plainUrlPattern = /https?:\/\/[^\s<>]+/gi;
+  while ((match = plainUrlPattern.exec(plainText.join('')))) {
+    found.push({ label: match[0].replace(/[.,!?;:)\]]+$/, ''), url: match[0].replace(/[.,!?;:)\]]+$/, '') });
+  }
+  const uniqueLinks = new Map(found.map((link) => {
+    try {
+      const normalized = normalizeWebClip({ url: link.url });
+      return [normalized.url, {
+        ...link,
+        label: link.label === link.url ? new URL(normalized.url).hostname.replace(/^www\./, '') : link.label,
+        url: normalized.url,
+      }];
+    } catch {
+      return [link.url, null];
+    }
+  }));
+  return [...uniqueLinks.values()].filter(Boolean);
+}
+
+function syncPinnedMarkdownLinks(note, text, wall) {
+  const existingLinks = new Map((note.pinnedLinks || []).map((link) => [link.url, link]));
+  return getMarkdownLinks(text).map((link, index) => {
+    const existing = existingLinks.get(link.url);
+    if (existing) return existing;
+    const offset = getAttachedLinkOffset(note, index, wall);
+    return {
+      id: crypto.randomUUID(),
+      ...link,
+      anchorOffset: {
+        x: offset.x,
+        y: offset.y,
+      },
+    };
+  });
+}
+
+function replaceMarkdownLink(source, oldUrl, newUrl, label) {
+  const escapeLabel = (value) => value.replaceAll('\\', '\\\\').replaceAll(']', '\\]');
+  const normalizeUrl = (value) => {
+    try {
+      return normalizeWebClip({ url: value }).url;
+    } catch {
+      return '';
+    }
+  };
+  const updatedLabel = escapeLabel(label);
+  const replaceUrl = (value) => {
+    const punctuation = value.match(/[.,!?;:)\]]+$/)?.[0] || '';
+    const candidate = value.slice(0, value.length - punctuation.length);
+    return normalizeUrl(candidate) === oldUrl ? `${newUrl}${punctuation}` : value;
+  };
+  const withUpdatedMarkdown = source.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, (original, _existingLabel, url) => (
+    normalizeUrl(url) === oldUrl ? `[${updatedLabel}](${newUrl})` : original
+  ));
+  return withUpdatedMarkdown.replace(/https?:\/\/[^\s<>]+/gi, replaceUrl);
+}
+
+function getAttachedLinkOffset(note, stackIndex, wall) {
+  const notePosition = wall.positions[note.id] || { x: 30, y: 30 };
+  const noteSize = wall.sizes?.[note.id] || { width: CARD_WIDTH, height: CARD_HEIGHT };
+  const attachedCount = (wall.webClips || []).filter((clip) => String(clip.attachedTo) === String(note.id)).length
+    + (note.pinnedLinks || []).length;
+  return {
+    x: noteSize.width - 22 + (attachedCount + stackIndex) * 10,
+    y: noteSize.height - 16 + (attachedCount + stackIndex) * 12,
+    notePosition,
+  };
+}
+
+function NoteActionsMenu({ noteTitle, onEdit, onDelete, className = '' }) {
+  const runAction = (event, action) => {
+    event.stopPropagation();
+    event.currentTarget.closest('details')?.removeAttribute('open');
+    action();
+  };
+
+  return (
+    <details className={`note-wall-note-actions-menu ${className}`} onClick={(event) => event.stopPropagation()}>
+      <summary role="button" aria-label={`More actions for ${noteTitle}`} title="More actions">
+        <Ellipsis size={17} />
+      </summary>
+      <div className="note-wall-note-actions-menu-list" role="menu" aria-label={`Actions for ${noteTitle}`}>
+        <button type="button" role="menuitem" onClick={(event) => runAction(event, onEdit)}><Pencil size={14} /> Edit note</button>
+        <button type="button" role="menuitem" className="is-destructive" onClick={(event) => runAction(event, onDelete)}><Trash2 size={14} /> Delete note</button>
+      </div>
+    </details>
+  );
+}
+
+function getNextAttachmentPosition(wall, notes, tasks, newSize = DEFAULT_ATTACHMENT_SIZE) {
   const occupied = [
     ...notes.map((note) => ({
       position: wall.positions[note.id] || { x: 30, y: 30 },
@@ -53,8 +166,8 @@ function getNextAttachmentPosition(wall, notes, tasks) {
     candidate = { x: 38 + (index % 3) * 330, y: 42 + Math.floor(index / 3) * 275 };
     index += 1;
   } while (occupied.some(({ position, size }) =>
-    candidate.x < position.x + size.width + 24 && candidate.x + DEFAULT_ATTACHMENT_SIZE.width + 24 > position.x
-    && candidate.y < position.y + size.height + 24 && candidate.y + DEFAULT_ATTACHMENT_SIZE.height + 24 > position.y));
+    candidate.x < position.x + size.width + 24 && candidate.x + newSize.width + 24 > position.x
+    && candidate.y < position.y + size.height + 24 && candidate.y + newSize.height + 24 > position.y));
   return candidate;
 }
 
@@ -74,6 +187,53 @@ function withoutWallAttachment(wall, id) {
     connections: wall.connections.filter((connection) =>
       !((connection.fromType === 'attachment' && connection.from === id)
         || (connection.toType === 'attachment' && connection.to === id))),
+  };
+}
+
+function withoutWallWebClip(wall, id) {
+  const positions = { ...wall.positions };
+  const sizes = { ...wall.sizes };
+  const comments = { ...(wall.comments || {}) };
+  delete positions[id];
+  delete sizes[id];
+  delete comments[`webclip:${id}`];
+  return {
+    ...wall,
+    webClips: (wall.webClips || []).filter((item) => String(item.id) !== String(id)),
+    positions,
+    sizes,
+    comments,
+    connections: wall.connections.filter((connection) =>
+      !((connection.fromType === 'webclip' && String(connection.from) === String(id))
+        || (connection.toType === 'webclip' && String(connection.to) === String(id)))),
+  };
+}
+
+function withoutWallBoardNode(wall, type, id) {
+  const positions = { ...wall.positions };
+  const taskPositions = { ...(wall.taskPositions || {}) };
+  const comments = { ...(wall.comments || {}) };
+  if (type === 'task') delete taskPositions[id];
+  else delete positions[id];
+  delete comments[`${type}:${id}`];
+  return {
+    ...wall,
+    webClips: type === 'note'
+      ? (wall.webClips || []).map((clip) => {
+          if (String(clip.attachedTo) !== String(id)) return clip;
+          const { attachedTo: _attachedTo, anchorOffset: _anchorOffset, ...detachedClip } = clip;
+          return detachedClip;
+        })
+      : wall.webClips,
+    positions,
+    taskPositions,
+    comments,
+    connections: wall.connections.filter((connection) => {
+      const fromType = connection.fromType || 'note';
+      const toType = connection.toType || 'note';
+      return !((fromType === type && String(connection.from) === String(id))
+        || (toType === type && String(connection.to) === String(id)));
+    }),
   };
 }
 
@@ -166,11 +326,22 @@ async function savePrivateDriveFile(token, data, fileId) {
   return fileId || (await response.json()).id;
 }
 
-export default function NoteWall() {
-  const [notes, setNotes] = useState(() => storageManager.getStickyNotes());
-  const [tasks, setTasks] = useState(() => storageManager.getTasks());
-  const [categories] = useState(() => storageManager.getNoteCategories());
-  const [wall, setWallState] = useState(() => storageManager.getNoteWall());
+export default function NoteWall({ boardId = null }) {
+  const initialBoard = useMemo(() => boardId ? storageManager.getNoteWallBoard(boardId) : null, [boardId]);
+  const [boardName, setBoardName] = useState(() => initialBoard?.name || 'Sticky note wall');
+  const [notes, setNotes] = useState(() => {
+    const storedNotes = initialBoard?.notes || storageManager.getStickyNotes();
+    if (!boardId) return storedNotes;
+    const initialWall = initialBoard?.wall || storageManager.getNoteWall();
+    return storedNotes.map((note) => ({
+      ...note,
+      pinnedLinks: syncPinnedMarkdownLinks(note, note.text || '', initialWall),
+    }));
+  });
+  const [tasks, setTasks] = useState(() => initialBoard?.tasks || storageManager.getTasks());
+  const [categories, setCategories] = useState(() => initialBoard?.categories || storageManager.getNoteCategories());
+  const [taskCategories, setTaskCategories] = useState(() => initialBoard?.taskCategories || DEFAULT_BOARD_TASK_CATEGORIES);
+  const [wall, setWallState] = useState(() => initialBoard?.wall || storageManager.getNoteWall());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [groupFilter, setGroupFilter] = useState('all');
@@ -187,8 +358,27 @@ export default function NoteWall() {
   const [wallSaveStatus, setWallSaveStatus] = useState('Changes save automatically in this browser');
   const [attachmentStatus, setAttachmentStatus] = useState('');
   const [webClipStatus, setWebClipStatus] = useState('');
-  const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState(null);
   const [showWebClipperSetup, setShowWebClipperSetup] = useState(false);
+  const [showAddLinkDialog, setShowAddLinkDialog] = useState(false);
+  const [showBoardNoteDialog, setShowBoardNoteDialog] = useState(false);
+  const [showBoardTaskDialog, setShowBoardTaskDialog] = useState(false);
+  const [showBoardFolderDialog, setShowBoardFolderDialog] = useState(false);
+  const [boardFolderDraft, setBoardFolderDraft] = useState('');
+  const [boardFolderError, setBoardFolderError] = useState('');
+  const [editingBoardNoteId, setEditingBoardNoteId] = useState(null);
+  const [boardNoteDraft, setBoardNoteDraft] = useState({ title: '', text: '', tags: '', category: 'Inbox', markdown: true });
+  const [noteEditorTab, setNoteEditorTab] = useState('write');
+  const [newNoteFolderName, setNewNoteFolderName] = useState('');
+  const [newNoteFolderError, setNewNoteFolderError] = useState('');
+  const [isCreatingNoteFolder, setIsCreatingNoteFolder] = useState(false);
+  const [boardTaskDraft, setBoardTaskDraft] = useState({ title: '', priority: 'medium', category: 'Inbox' });
+  const [webClipUrl, setWebClipUrl] = useState('');
+  const [webClipTitle, setWebClipTitle] = useState('');
+  const [webClipError, setWebClipError] = useState('');
+  const [isFetchingWebClipMetadata, setIsFetchingWebClipMetadata] = useState(false);
+  const [editingLink, setEditingLink] = useState(null);
+  const [linkDraft, setLinkDraft] = useState({ url: '', label: '' });
   const [threadNode, setThreadNode] = useState(null);
   const [threadDraft, setThreadDraft] = useState('');
   const [attachmentUrls, setAttachmentUrls] = useState({});
@@ -269,7 +459,11 @@ export default function NoteWall() {
   useEffect(() => () => window.clearTimeout(wallHistoryRef.current.timer), []);
 
   useEffect(() => {
-    pruneWallAttachments(() => (wallRef.current.attachments || []).map((attachment) => attachment.id))
+    pruneWallAttachments(() => [
+      ...storageManager.getNoteWall().attachments,
+      ...storageManager.getNoteWallBoards().flatMap((board) => board.wall.attachments),
+      ...(wallRef.current.attachments || []),
+    ].map((attachment) => attachment.id))
       .catch((error) => setAttachmentStatus(error.message || 'Could not clean up removed attachments.'));
   }, []);
 
@@ -279,13 +473,14 @@ export default function NoteWall() {
   }, []);
 
   useEffect(() => {
+    if (boardId) return undefined;
     const syncNotes = (event) => {
       if (event.key === 'kazedesk_sticky_notes') setNotes(storageManager.getStickyNotes());
       if (event.key === 'kazedesk_tasks') setTasks(storageManager.getTasks());
     };
     window.addEventListener('storage', syncNotes);
     return () => window.removeEventListener('storage', syncNotes);
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -296,11 +491,12 @@ export default function NoteWall() {
     try {
       const metadata = decodeWebClipPayload(payload);
       const clip = { id: crypto.randomUUID(), ...metadata, clippedAt: new Date().toISOString(), category: 'Inbox' };
+      const clipSize = getCompactWebClipSize(clip);
       setWall((current) => ({
         ...current,
         webClips: [...(current.webClips || []), clip],
-        positions: { ...current.positions, [clip.id]: getNextAttachmentPosition(current, notes, tasks) },
-        sizes: { ...current.sizes, [clip.id]: DEFAULT_WEB_CLIP_SIZE },
+        positions: { ...current.positions, [clip.id]: getNextAttachmentPosition(current, notes, tasks, clipSize) },
+        sizes: { ...current.sizes, [clip.id]: clipSize },
       }));
       setWebClipStatus(`Saved “${clip.title}” to the wall.`);
     } catch (error) {
@@ -364,14 +560,19 @@ export default function NoteWall() {
 
   useEffect(() => {
     try {
-      storageManager.saveNoteWall(wall);
+      if (boardId) {
+        const updatedBoard = storageManager.saveNoteWallBoard(boardId, { wall, notes, tasks, categories, taskCategories });
+        setBoardName(updatedBoard.name);
+      } else {
+        storageManager.saveNoteWall(wall);
+      }
       setWallSaveStatus(nextSaveMessageRef.current || 'Changes saved locally');
       nextSaveMessageRef.current = '';
     } catch (error) {
       setWallSaveStatus(`Could not save locally: ${error.message || 'browser storage is unavailable'}`);
       nextSaveMessageRef.current = '';
     }
-  }, [wall]);
+  }, [boardId, categories, notes, taskCategories, tasks, wall]);
 
   useEffect(() => {
     let active = true;
@@ -440,8 +641,11 @@ export default function NoteWall() {
     [groupFilter, wall.attachments],
   );
   const visibleWebClips = useMemo(
-    () => (wall.webClips || []).filter(() => groupFilter === 'all' || groupFilter === 'folder:Inbox'),
-    [groupFilter, wall.webClips],
+    () => (wall.webClips || []).filter((clip) =>
+      groupFilter === 'all'
+      || groupFilter === 'folder:Inbox'
+      || (clip.attachedTo && visibleNotes.some((note) => String(note.id) === String(clip.attachedTo)))),
+    [groupFilter, visibleNotes, wall.webClips],
   );
   const visibleEndpoint = (connection, side) => {
     const type = connection[`${side}Type`] || 'note';
@@ -496,18 +700,38 @@ export default function NoteWall() {
     }
   };
 
-  const removeAttachment = async (attachment) => {
-    setPendingDeleteAttachment(attachment);
-  };
-
   const confirmRemoveAttachment = () => {
-    if (!pendingDeleteAttachment) return;
-    const attachment = pendingDeleteAttachment;
+    if (!pendingDeleteItem) return;
+    const item = pendingDeleteItem;
     window.clearTimeout(wallHistoryRef.current.timer);
     wallHistoryRef.current.timer = null;
-    setWall((current) => withoutWallAttachment(current, attachment.id));
-    setPendingDeleteAttachment(null);
-    setAttachmentStatus(`${attachment.name} removed from the wall. Use Undo to restore it.`);
+    if (item.type === 'markdownLink') {
+      setNotes((current) => current.map((note) => String(note.id) === String(item.noteId)
+        ? { ...note, pinnedLinks: (note.pinnedLinks || []).filter((link) => String(link.id) !== String(item.id)) }
+        : note));
+    } else if (item.type === 'note') {
+      setNotes((current) => current.filter((note) => String(note.id) !== String(item.id)));
+      setWall((current) => withoutWallBoardNode(current, item.type, item.id), false);
+    } else if (item.type === 'task') {
+      setTasks((current) => current.filter((task) => String(task.id) !== String(item.id)));
+      setWall((current) => withoutWallBoardNode(current, item.type, item.id), false);
+    } else if (item.type === 'webclip') {
+      setWall((current) => withoutWallWebClip(current, item.id));
+    } else if (item.type === 'attachment') {
+      setWall((current) => withoutWallAttachment(current, item.id));
+    } else {
+      throw new Error(`Unsupported item type for deletion: ${item.type}`);
+    }
+    setPendingDeleteItem(null);
+    if (item.type === 'markdownLink') {
+      setWebClipStatus(`“${item.title}” removed from its note.`);
+    } else if (item.type === 'webclip') {
+      setWebClipStatus(`“${item.title}” removed from the wall. Use Undo to restore it.`);
+    } else if (item.type === 'attachment') {
+      setAttachmentStatus(`${item.name} removed from the wall. Use Undo to restore it.`);
+    } else {
+      setWallSaveStatus(`${item.type === 'note' ? 'Note' : 'Task'} removed from this board.`);
+    }
   };
 
   const getEndpointLabel = (type, id) => {
@@ -558,6 +782,298 @@ export default function NoteWall() {
     }
   };
 
+  const addWebClip = async (event) => {
+    event.preventDefault();
+    let metadata;
+    try {
+      metadata = normalizeWebClip({ url: webClipUrl, title: webClipTitle });
+    } catch (error) {
+      setWebClipError(error.message || 'Could not add this link.');
+      return;
+    }
+    setIsFetchingWebClipMetadata(true);
+    setWebClipError('');
+    let metadataWarning = '';
+    let metadataAvailable = false;
+    try {
+      const fetchedMetadata = await fetchWebClipMetadata(metadata.url);
+      metadataAvailable = fetchedMetadata.metadataAvailable;
+      metadata = normalizeWebClip({
+        ...fetchedMetadata,
+        title: webClipTitle.trim() || fetchedMetadata.title,
+      });
+    } catch (error) {
+      metadataWarning = error.message || 'The page metadata could not be read.';
+    } finally {
+      setIsFetchingWebClipMetadata(false);
+    }
+    const compact = !metadataAvailable;
+    const clip = { id: crypto.randomUUID(), ...metadata, compact, clippedAt: new Date().toISOString(), category: 'Inbox' };
+    const clipSize = getCompactWebClipSize(clip);
+    setWall((current) => ({
+      ...current,
+      webClips: [...(current.webClips || []), clip],
+      positions: { ...current.positions, [clip.id]: getNextAttachmentPosition(current, notes, tasks, clipSize) },
+      sizes: { ...current.sizes, [clip.id]: clipSize },
+    }));
+    setWebClipUrl('');
+    setWebClipTitle('');
+    setShowAddLinkDialog(false);
+    const metadataStatus = metadataWarning
+      ? ` Page metadata unavailable: ${metadataWarning} You can use the Web clipper bookmarklet instead.`
+      : metadata.image && metadata.author
+        ? ' Thumbnail and author loaded.'
+        : metadata.image
+          ? ' Thumbnail loaded; the page did not provide an author.'
+          : metadata.author
+            ? ' Author loaded; the page did not provide a thumbnail.'
+            : ' This page did not provide a thumbnail or author.';
+    setWebClipStatus(`Pinned “${clip.title}” to the wall.${metadataStatus}`);
+  };
+
+  const pinWebClipToNote = (clipId, noteId) => {
+    const note = notes.find((item) => String(item.id) === String(noteId));
+    if (!note) return;
+    setWall((current) => {
+      const clip = current.webClips.find((item) => String(item.id) === String(clipId));
+      if (!clip || String(clip.attachedTo) === String(noteId)) return current;
+      const offset = getAttachedLinkOffset(note, 0, current);
+      return {
+        ...current,
+        webClips: current.webClips.map((item) => String(item.id) === String(clipId)
+          ? { ...item, attachedTo: String(noteId), anchorOffset: { x: offset.x, y: offset.y } }
+          : item),
+        positions: { ...current.positions, [clipId]: { x: offset.notePosition.x + offset.x, y: offset.notePosition.y + offset.y } },
+      };
+    });
+  };
+
+  const unpinWebClip = (clipId) => {
+    setWall((current) => ({
+      ...current,
+      webClips: current.webClips.map((clip) => {
+        if (String(clip.id) !== String(clipId)) return clip;
+        const { attachedTo: _attachedTo, anchorOffset: _anchorOffset, ...detachedClip } = clip;
+        return detachedClip;
+      }),
+    }));
+  };
+
+  const openLinkEditor = (type, item, noteId) => {
+    setEditingLink({ type, id: item.id, noteId });
+    setLinkDraft({ url: item.url, label: item.label || item.title || '' });
+    setWebClipError('');
+  };
+
+  const saveLinkEdit = async (event) => {
+    event.preventDefault();
+    let normalized;
+    try {
+      normalized = normalizeWebClip({ url: linkDraft.url, title: linkDraft.label });
+    } catch (error) {
+      setWebClipError(error.message || 'Enter a valid web link.');
+      return;
+    }
+
+    if (editingLink.type === 'markdownLink') {
+      const updatedLink = { url: normalized.url, label: linkDraft.label.trim() || new URL(normalized.url).hostname };
+      const updateNoteLink = (note) => {
+        if (String(note.id) !== String(editingLink.noteId)) return note;
+        const oldLink = note.pinnedLinks?.find((link) => String(link.id) === String(editingLink.id));
+        if (!oldLink) return note;
+        const text = replaceMarkdownLink(note.text || '', oldLink.url, updatedLink.url, updatedLink.label);
+        const pinnedLinks = (note.pinnedLinks || []).map((link) => String(link.id) === String(editingLink.id)
+          ? { ...link, ...updatedLink }
+          : link);
+        return { ...note, text, pinnedLinks };
+      };
+      setNotes((current) => current.map(updateNoteLink));
+      setSelectedNote((current) => current ? updateNoteLink(current) : current);
+      setEditingLink(null);
+      return;
+    }
+
+    const currentClip = wallRef.current.webClips.find((clip) => String(clip.id) === String(editingLink.id));
+    if (!currentClip) {
+      setWebClipError('This link is no longer on the wall.');
+      return;
+    }
+    let updatedClip = { ...currentClip, title: linkDraft.label.trim() || currentClip.title };
+    if (normalized.url !== currentClip.url) {
+      updatedClip = {
+        ...currentClip,
+        ...normalized,
+        id: currentClip.id,
+        title: linkDraft.label.trim() || normalized.title,
+        category: currentClip.category,
+        clippedAt: currentClip.clippedAt,
+        compact: true,
+      };
+      setIsFetchingWebClipMetadata(true);
+      try {
+        const metadata = await fetchWebClipMetadata(normalized.url);
+        const normalizedMetadata = normalizeWebClip({
+          ...metadata,
+          url: normalized.url,
+          title: linkDraft.label.trim() || metadata.title,
+        });
+        updatedClip = {
+          ...currentClip,
+          ...normalizedMetadata,
+          compact: !metadata.metadataAvailable,
+        };
+      } catch (error) {
+        setWebClipStatus(`Link updated, but metadata could not be loaded: ${error.message || 'the site blocked access.'}`);
+      } finally {
+        setIsFetchingWebClipMetadata(false);
+      }
+    }
+    const clipSize = getCompactWebClipSize(updatedClip);
+    setWall((current) => ({
+      ...current,
+      webClips: current.webClips.map((clip) => String(clip.id) === String(updatedClip.id) ? updatedClip : clip),
+      sizes: { ...current.sizes, [updatedClip.id]: clipSize },
+    }));
+    setEditingLink(null);
+  };
+
+  const togglePinnedMarkdownLink = (noteId, link) => {
+    const note = notes.find((item) => String(item.id) === String(noteId));
+    if (!note) return;
+    const pinnedLinks = note.pinnedLinks || [];
+    const nextPinnedLinks = pinnedLinks.some((item) => item.url === link.url)
+      ? pinnedLinks.filter((item) => item.url !== link.url)
+      : (() => {
+          const offset = getAttachedLinkOffset(note, 0, wall);
+          return [...pinnedLinks, {
+            id: crypto.randomUUID(),
+            url: link.url,
+            label: link.label,
+            anchorOffset: { x: offset.x, y: offset.y },
+          }];
+        })();
+    setNotes((current) => current.map((item) => String(item.id) === String(noteId)
+      ? { ...item, pinnedLinks: nextPinnedLinks }
+      : item));
+    setSelectedNote((current) => current && String(current.id) === String(noteId)
+      ? { ...current, pinnedLinks: nextPinnedLinks }
+      : current);
+  };
+
+  const openBoardNoteEditor = (note = null) => {
+    setEditingBoardNoteId(note?.id ?? null);
+    setBoardNoteDraft({
+      title: note?.title || '',
+      text: note?.text || '',
+      tags: (note?.tags || []).join(', '),
+      category: note?.category || 'Inbox',
+      markdown: note?.markdown !== false,
+    });
+    setNoteEditorTab('write');
+    setNewNoteFolderName('');
+    setNewNoteFolderError('');
+    setIsCreatingNoteFolder(false);
+    setShowBoardNoteDialog(true);
+  };
+
+  const saveBoardNote = (event) => {
+    event.preventDefault();
+    if (!boardId) return;
+    const text = boardNoteDraft.text.trim();
+    const firstLine = text.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
+    const title = boardNoteDraft.title.trim() || (boardNoteDraft.markdown ? firstLine.replace(/^#{1,6}\s*/, '') : firstLine) || 'Untitled note';
+    const tags = [...new Set(boardNoteDraft.tags.split(',').map((tag) => tag.trim()).filter(Boolean))];
+    if (editingBoardNoteId !== null) {
+      setNotes((current) => current.map((note) => {
+        if (String(note.id) !== String(editingBoardNoteId)) return note;
+        const updatedNote = { ...note, title, text, tags, category: boardNoteDraft.category, markdown: boardNoteDraft.markdown };
+        return {
+          ...updatedNote,
+          pinnedLinks: boardNoteDraft.markdown ? syncPinnedMarkdownLinks(updatedNote, text, wallRef.current) : [],
+        };
+      }));
+    } else {
+      const note = { id: crypto.randomUUID(), title, text, tags, category: boardNoteDraft.category, color: 'yellow', markdown: boardNoteDraft.markdown };
+      const newNote = {
+        ...note,
+        pinnedLinks: boardNoteDraft.markdown ? syncPinnedMarkdownLinks(note, text, wallRef.current) : [],
+      };
+      setNotes((current) => [...current, newNote]);
+      setWall((current) => ({
+        ...current,
+        positions: { ...current.positions, [note.id]: getNextAttachmentPosition(current, notes, tasks, { width: CARD_WIDTH, height: CARD_HEIGHT }) },
+        sizes: { ...current.sizes, [note.id]: { width: CARD_WIDTH, height: CARD_HEIGHT } },
+      }));
+    }
+    setShowBoardNoteDialog(false);
+    setEditingBoardNoteId(null);
+    setBoardNoteDraft({ title: '', text: '', tags: '', category: 'Inbox', markdown: true });
+  };
+
+  const createFolderFromNoteEditor = () => {
+    const name = newNoteFolderName.trim();
+    if (!name) {
+      setNewNoteFolderError('Enter a folder name first.');
+      return;
+    }
+    if ([...new Set([...categories, ...taskCategories])].some((category) => category.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setNewNoteFolderError('This folder already exists on the board.');
+      return;
+    }
+    setCategories((current) => [...current, name]);
+    setTaskCategories((current) => [...current, name]);
+    setBoardNoteDraft((current) => ({ ...current, category: name }));
+    setNewNoteFolderName('');
+    setNewNoteFolderError('');
+    setIsCreatingNoteFolder(false);
+  };
+
+  const addBoardFolder = (event) => {
+    event.preventDefault();
+    const name = boardFolderDraft.trim();
+    if (!boardId || !name) return;
+    if ([...new Set([...categories, ...taskCategories])].some((category) => category.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setBoardFolderError('A folder with this name already exists.');
+      return;
+    }
+    setCategories((current) => [...current, name]);
+    setTaskCategories((current) => [...current, name]);
+    setBoardFolderDraft('');
+    setBoardFolderError('');
+    setShowBoardFolderDialog(false);
+  };
+
+  const addBoardTask = (event) => {
+    event.preventDefault();
+    if (!boardId || !boardTaskDraft.title.trim()) return;
+    const task = {
+      id: crypto.randomUUID(),
+      title: boardTaskDraft.title.trim(),
+      category: boardTaskDraft.category,
+      priority: boardTaskDraft.priority,
+      completed: false,
+      reminder: null,
+      createdAt: new Date().toISOString(),
+    };
+    setTasks((current) => [...current, task]);
+    setWall((current) => ({
+      ...current,
+      taskPositions: {
+        ...current.taskPositions,
+        [task.id]: getNextAttachmentPosition(current, notes, tasks, { width: 220, height: 42 }),
+      },
+    }));
+    setBoardTaskDraft({ title: '', priority: 'medium', category: 'Inbox' });
+    setShowBoardTaskDialog(false);
+  };
+
+  const toggleBoardTask = (taskId) => {
+    if (!boardId) return;
+    setTasks((current) => current.map((task) => String(task.id) === String(taskId)
+      ? { ...task, completed: !task.completed }
+      : task));
+  };
+
   const renderCommentButton = (type, id, title) => {
     const count = wall.comments?.[`${type}:${id}`]?.length || 0;
     return (
@@ -571,6 +1087,116 @@ export default function NoteWall() {
         <MessageCircle size={13} />
         {count > 0 && <span>{count}</span>}
       </button>
+    );
+  };
+
+  const renderWebClipCard = (clip, attachedNote = null) => {
+    const attached = Boolean(attachedNote);
+    const storedPosition = wall.positions[clip.id] || { x: 30, y: 30 };
+    const offset = attached
+      ? clip.anchorOffset || getAttachedLinkOffset(attachedNote, 0, wall)
+      : null;
+    const compactSize = getCompactWebClipSize(clip);
+    const style = attached
+      ? { left: offset.x, top: offset.y, '--note-wall-clip-width': `${compactSize.width}px`, '--note-wall-clip-height': `${compactSize.height}px` }
+      : { left: storedPosition.x, top: storedPosition.y, '--note-wall-clip-width': `${compactSize.width}px`, '--note-wall-clip-height': `${compactSize.height}px` };
+    const host = new URL(clip.url).hostname.replace(/^www\./, '');
+
+    return (
+      <article
+        key={`webclip:${clip.id}`}
+        className={`note-wall-webclip is-compact${attached ? ' is-attached' : ''}`}
+        data-node-id={String(clip.id)}
+        data-node-type="webclip"
+        aria-label={`Web clip: ${clip.title}`}
+        style={style}
+      >
+        <div className="note-wall-webclip-toolbar">
+          <button
+            type="button"
+            className="note-wall-webclip-move"
+            aria-label={`Move web clip ${clip.title}`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const point = getBoardPoint(event);
+              gestureRef.current = { type: 'move-node', nodeType: 'webclip', id: clip.id, offsetX: point.x - storedPosition.x, offsetY: point.y - storedPosition.y };
+            }}
+          >
+            <GripVertical size={15} aria-hidden="true" />
+          </button>
+          <span className="note-wall-webclip-kind">{attached ? 'PINNED' : 'WEB CLIP'}</span>
+          <details className="note-wall-webclip-pin-menu" onClick={(event) => event.stopPropagation()}>
+            <summary role="button" aria-label={`${attached ? 'Move or unpin' : 'Pin'} ${clip.title} ${attached ? 'from note' : 'to a note'}`} title={attached ? 'Move or unpin from note' : 'Pin to a note'}>
+              <Pin size={14} fill={attached ? 'currentColor' : 'none'} />
+            </summary>
+            <div className="note-wall-webclip-pin-options">
+              {attached && <button type="button" onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); unpinWebClip(clip.id); }}>Unpin from note</button>}
+              {notes.filter((note) => String(note.id) !== String(clip.attachedTo)).map((note) => (
+                <button key={note.id} type="button" onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); pinWebClipToNote(clip.id, note.id); }}>
+                  Pin to {getWallNoteTitle(note)}
+                </button>
+              ))}
+              {!notes.length && <span>Add a note before pinning this link.</span>}
+            </div>
+          </details>
+          <details className="note-wall-link-actions-menu" onClick={(event) => event.stopPropagation()}>
+            <summary role="button" aria-label={`More actions for link ${clip.title}`} title="More link actions"><Ellipsis size={17} /></summary>
+            <div className="note-wall-webclip-pin-options">
+              <button type="button" onClick={(event) => {
+                event.currentTarget.closest('details')?.removeAttribute('open');
+                openLinkEditor('webclip', clip);
+              }}><Pencil size={13} /> Edit link</button>
+              <button type="button" className="is-destructive" onClick={(event) => {
+                event.currentTarget.closest('details')?.removeAttribute('open');
+                setPendingDeleteItem({ ...clip, type: 'webclip' });
+              }}><Trash2 size={13} /> Delete link</button>
+            </div>
+          </details>
+          {renderCommentButton('webclip', clip.id, clip.title)}
+        </div>
+        <a className="note-wall-webclip-title" href={clip.url} target="_blank" rel="noopener noreferrer">{clip.title}</a>
+        {(clip.siteName || host).toLocaleLowerCase() !== (clip.title || '').toLocaleLowerCase() && (
+          <span className="note-wall-webclip-site-name"><Globe2 size={11} aria-hidden="true" />{clip.siteName || host}</span>
+        )}
+        <div className="note-wall-webclip-preview">
+          <strong className="note-wall-webclip-preview-title">{clip.title}</strong>
+          {clip.image && <img className="note-wall-webclip-image" src={clip.image} alt="" loading="lazy" />}
+          {clip.description && <p className="note-wall-webclip-description">{clip.description}</p>}
+          <div className="note-wall-webclip-meta">
+            {clip.author && <span>{clip.author}</span>}
+            {clip.publishedAt && <span>{clip.publishedAt}</span>}
+            <a href={clip.url} target="_blank" rel="noopener noreferrer" title={clip.url}>{host}</a>
+          </div>
+        </div>
+        {CONNECTION_ANCHORS.map((anchor) => (
+          <button
+            key={anchor}
+            type="button"
+            className={`note-wall-connect-handle is-${anchor}`}
+            aria-label={`Drag from ${anchor} edge of ${clip.title} to connect`}
+            title={`Drag from ${anchor} edge to connect`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              gestureRef.current = { type: 'connect', nodeType: 'webclip', id: clip.id, anchor };
+              setConnectionPreview({ from: clip.id, fromType: 'webclip', anchor, ...getBoardPoint(event) });
+            }}
+          />
+        ))}
+        {wall.connections.filter((connection) =>
+          (connection.fromType === 'webclip' && String(connection.from) === String(clip.id))
+          || (connection.toType === 'webclip' && String(connection.to) === String(clip.id))).map((connection) => (
+          <button
+            key={connection.id}
+            type="button"
+            className="note-wall-unlink"
+            aria-label="Remove connection"
+            title="Remove connection"
+            onClick={() => setWall((current) => ({ ...current, connections: current.connections.filter((item) => item.id !== connection.id) }))}
+          ><Unlink size={13} /></button>
+        ))}
+      </article>
     );
   };
 
@@ -598,6 +1224,27 @@ export default function NoteWall() {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [threadNode]);
 
+  useEffect(() => {
+    const closeLinkMenus = (event) => {
+      const currentMenu = event.target instanceof Element
+        ? event.target.closest('.note-wall-webclip-pin-menu, .note-wall-link-actions-menu')
+        : null;
+      boardRef.current?.querySelectorAll('.note-wall-webclip-pin-menu[open], .note-wall-link-actions-menu[open]').forEach((menu) => {
+        if (menu !== currentMenu) menu.removeAttribute('open');
+      });
+    };
+    const closeMenusOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      boardRef.current?.querySelectorAll('.note-wall-webclip-pin-menu[open], .note-wall-link-actions-menu[open]').forEach((menu) => menu.removeAttribute('open'));
+    };
+    document.addEventListener('pointerdown', closeLinkMenus);
+    document.addEventListener('keydown', closeMenusOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeLinkMenus);
+      document.removeEventListener('keydown', closeMenusOnEscape);
+    };
+  }, []);
+
   const getBoardPoint = useCallback((event) => {
     const bounds = boardRef.current.getBoundingClientRect();
     return {
@@ -620,14 +1267,48 @@ export default function NoteWall() {
         const nextPosition = { x: Math.max(0, point.x - gesture.offsetX), y: Math.max(0, point.y - gesture.offsetY) };
         if (gesture.nodeType === 'task') {
           setWall((current) => ({ ...current, taskPositions: { ...current.taskPositions, [gesture.id]: nextPosition } }));
+        } else if (gesture.nodeType === 'markdownLink') {
+          const notePosition = wall.positions[gesture.noteId] || { x: 30, y: 30 };
+          setNotes((current) => current.map((note) => String(note.id) === String(gesture.noteId)
+            ? {
+                ...note,
+                pinnedLinks: (note.pinnedLinks || []).map((link) => String(link.id) === String(gesture.id)
+                  ? {
+                      ...link,
+                      anchorOffset: {
+                        x: Math.max(0, nextPosition.x - notePosition.x),
+                        y: Math.max(0, nextPosition.y - notePosition.y),
+                      },
+                    }
+                  : link),
+              }
+            : note));
         } else {
-        setWall((current) => ({
-          ...current,
-          positions: {
-            ...current.positions,
-            [gesture.id]: nextPosition,
-          },
-        }));
+          setWall((current) => {
+            const previousPosition = current.positions[gesture.id] || { x: 30, y: 30 };
+            const deltaX = nextPosition.x - previousPosition.x;
+            const deltaY = nextPosition.y - previousPosition.y;
+            const positions = { ...current.positions, [gesture.id]: nextPosition };
+            let webClips = current.webClips;
+            if (gesture.nodeType === 'note') {
+              webClips
+                .filter((clip) => String(clip.attachedTo) === String(gesture.id))
+                .forEach((clip) => {
+                  const clipPosition = positions[clip.id] || { x: previousPosition.x + (clip.anchorOffset?.x || 0), y: previousPosition.y + (clip.anchorOffset?.y || 0) };
+                  positions[clip.id] = { x: clipPosition.x + deltaX, y: clipPosition.y + deltaY };
+                });
+            }
+            if (gesture.nodeType === 'webclip') {
+              const clip = current.webClips.find((item) => String(item.id) === String(gesture.id));
+              if (clip?.attachedTo) {
+                const notePosition = current.positions[clip.attachedTo] || { x: 30, y: 30 };
+                webClips = current.webClips.map((item) => String(item.id) === String(gesture.id)
+                  ? { ...item, anchorOffset: { x: nextPosition.x - notePosition.x, y: nextPosition.y - notePosition.y } }
+                  : item);
+              }
+            }
+            return { ...current, positions, webClips };
+          });
         }
       } else if (gesture.type === 'resize') {
         setWall((current) => ({
@@ -752,13 +1433,13 @@ export default function NoteWall() {
   }, [selectedNote]);
 
   useEffect(() => {
-    if (!pendingDeleteAttachment) return undefined;
+    if (!pendingDeleteItem) return undefined;
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setPendingDeleteAttachment(null);
+      if (event.key === 'Escape') setPendingDeleteItem(null);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [pendingDeleteAttachment]);
+  }, [pendingDeleteItem]);
 
   const addConnection = (event) => {
     event.preventDefault();
@@ -806,7 +1487,8 @@ export default function NoteWall() {
   const updateSelectedCardColor = (color) => {
     if (selectedCardId === null) return;
     const updatedNotes = notes.map((note) => String(note.id) === String(selectedCardId) ? { ...note, color } : note);
-    storageManager.saveStickyNotes(updatedNotes);
+    if (boardId) storageManager.saveNoteWallBoard(boardId, { notes: updatedNotes });
+    else storageManager.saveStickyNotes(updatedNotes);
     setNotes(updatedNotes);
   };
 
@@ -840,7 +1522,7 @@ export default function NoteWall() {
       : addRelatedWallConnections(visibleNotes, visibleTasks, tidyEligibleConnections);
     const taskNodes = visibleTasks.map((task) => ({ ...task, type: 'task', wallKey: `task:${task.id}` }));
     const attachmentNodes = visibleAttachments.map((attachment) => ({ ...attachment, type: 'attachment' }));
-    const webClipNodes = visibleWebClips.map((clip) => ({ ...clip, type: 'webclip' }));
+    const webClipNodes = visibleWebClips.filter((clip) => !clip.attachedTo).map((clip) => ({ ...clip, type: 'webclip' }));
     const layout = tidyWallLayout([...visibleNotes, ...attachmentNodes, ...webClipNodes], { ...wall, connections: sourceConnections }, taskNodes);
     const contentNodes = [
       ...visibleNotes.map((note) => ({ ...note, type: 'note' })),
@@ -883,7 +1565,17 @@ export default function NoteWall() {
       : `Board tidied and saved locally${addedLineCount ? ` · added ${addedLineCount} related ${addedLineCount === 1 ? 'line' : 'lines'}` : ''}`;
     setWall((current) => ({
       ...current,
-      positions: { ...current.positions, ...centeredPositions },
+      positions: {
+        ...current.positions,
+        ...centeredPositions,
+        ...Object.fromEntries(current.webClips
+          .filter((clip) => clip.attachedTo)
+          .map((clip) => {
+            const notePosition = centeredPositions[clip.attachedTo] || current.positions[clip.attachedTo] || { x: 30, y: 30 };
+            const offset = clip.anchorOffset || { x: 0, y: 0 };
+            return [clip.id, { x: notePosition.x + offset.x, y: notePosition.y + offset.y }];
+          })),
+      },
       taskPositions: { ...current.taskPositions, ...centeredTaskPositions },
       connections: clearConnections ? [] : layout.connections,
     }));
@@ -909,13 +1601,16 @@ export default function NoteWall() {
         type: 'sticky-note-wall',
         version: 1,
         exportedAt: new Date().toISOString(),
+        ...(boardId ? { boardName } : {}),
         categories,
         notes,
+        tasks,
         wall,
       };
-      const storedId = localStorage.getItem('kazedesk_note_wall_drive_file_id');
+      const driveFileKey = boardId ? `kazedesk_note_wall_drive_file_id_${boardId}` : 'kazedesk_note_wall_drive_file_id';
+      const storedId = localStorage.getItem(driveFileKey);
       const fileId = await savePrivateDriveFile(token, data, storedId);
-      localStorage.setItem('kazedesk_note_wall_drive_file_id', fileId);
+      localStorage.setItem(driveFileKey, fileId);
       setDriveStatus('Saved privately to your Google Drive.');
     } catch (error) {
       setDriveStatus(error.message || 'Could not save the wall to Google Drive.');
@@ -932,8 +1627,8 @@ export default function NoteWall() {
     <main className={`note-wall-page landing-theme-${theme}${isPrinting ? ' is-printing' : ''}`}>
       <header className="note-wall-toolbar">
         <div className="note-wall-heading">
-          <Link to="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={18} /> Dashboard</Link>
-          <div><h1>Sticky note wall</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · {wall.webClips?.length || 0} web clips · changes save in this browser</span></div>
+          <Link to={boardId ? '/wall/boards' : '/dashboard'} aria-label={boardId ? 'Back to boards' : 'Back to dashboard'}><ArrowLeft size={18} /> {boardId ? 'Boards' : 'Dashboard'}</Link>
+          <div><h1>{boardId ? boardName : 'Sticky note wall'}</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · {wall.webClips?.length || 0} web clips · changes save in this browser</span></div>
         </div>
         <div className="note-wall-export-actions">
           <button type="button" className="note-wall-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
@@ -944,14 +1639,23 @@ export default function NoteWall() {
             setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
             setIsPrinting(true);
           }}><Printer size={15} /> PDF</button>
-          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [])}><FileText size={15} /> Markdown</button>
-          <button type="button" onClick={() => exportWallJSON(notes, categories, wall)}><FileJson2 size={15} /> JSON</button>
+          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [], tasks)}><FileText size={15} /> Markdown</button>
+          <button type="button" onClick={() => exportWallJSON(notes, categories, wall, tasks, boardId ? boardName : '')}><FileJson2 size={15} /> JSON</button>
           <button type="button" onClick={saveToDrive}><Save size={15} /> Save to Drive</button>
         </div>
       </header>
 
       <section className="note-wall-controls" aria-label="Wall controls">
         <div className="note-wall-toolbar-main">
+          {!boardId && <Link to="/wall/boards" className="note-wall-secondary-action note-wall-boards-link"><Plus size={15} /> My boards</Link>}
+          {boardId && (
+            <>
+              <Link to="/wall/boards" className="note-wall-secondary-action note-wall-boards-link"><ArrowLeft size={15} /> My boards</Link>
+              <button type="button" className="note-wall-primary-action" onClick={() => openBoardNoteEditor()}><Plus size={16} /> Add note</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => setShowBoardTaskDialog(true)}><Plus size={16} /> Add task</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => { setBoardFolderError(''); setShowBoardFolderDialog(true); }}><Plus size={16} /> New folder</button>
+            </>
+          )}
           <input
             ref={attachmentInputRef}
             className="note-wall-file-input"
@@ -968,6 +1672,9 @@ export default function NoteWall() {
             title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`}
           >
             <FilePlus2 size={16} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
+          </button>
+          <button type="button" className="note-wall-secondary-action" onClick={() => { setWebClipError(''); setShowAddLinkDialog(true); }}>
+            <Link2 size={16} /> Add link
           </button>
           <button type="button" className="note-wall-secondary-action" onClick={() => setShowWebClipperSetup(true)} title="Set up the browser bookmarklet to clip pages with their metadata">
             <Globe2 size={16} /> Web clipper
@@ -1100,10 +1807,22 @@ export default function NoteWall() {
       {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 ? (
         <div className="note-wall-empty">
           <StickyNote size={34} />
-          <h2>{notes.length ? 'No notes with this tag' : 'Start with your notes'}</h2>
-          <p>{notes.length ? 'Choose a different folder or tag group.' : 'Create notes and tags on the dashboard, or add an image, PDF, or audio clip to place it on your wall.'}</p>
-          {!notes.length && <button type="button" className="note-wall-primary-action" onClick={() => attachmentInputRef.current?.click()}><FilePlus2 size={16} /> Add attachment</button>}
-          <Link to="/dashboard">Go to notes</Link>
+          <h2>{notes.length || tasks.length ? 'No items in this view' : boardId ? 'Start your new board' : 'Start with your notes'}</h2>
+          <p>{notes.length || tasks.length
+            ? 'Choose a different folder or tag group.'
+            : boardId
+              ? 'Add notes, tasks, files, or web links to this independent board.'
+              : 'Create notes and tags on the dashboard, or add an image, PDF, or audio clip to place it on your wall.'}</p>
+          {boardId ? (
+            <div className="note-wall-empty-board-actions">
+              <button type="button" className="note-wall-primary-action" onClick={() => openBoardNoteEditor()}><Plus size={16} /> Add note</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => setShowBoardTaskDialog(true)}><Plus size={16} /> Add task</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => setShowBoardFolderDialog(true)}><Plus size={16} /> New folder</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => setShowAddLinkDialog(true)}><Link2 size={16} /> Add link</button>
+              <button type="button" className="note-wall-secondary-action" onClick={() => attachmentInputRef.current?.click()}><FilePlus2 size={16} /> Add attachment</button>
+            </div>
+          ) : !notes.length && <button type="button" className="note-wall-primary-action" onClick={() => attachmentInputRef.current?.click()}><FilePlus2 size={16} /> Add attachment</button>}
+          <Link to={boardId ? '/wall/boards' : '/dashboard'}>{boardId ? 'Back to boards' : 'Go to notes'}</Link>
         </div>
       ) : (
         <div className={`note-wall-scroll${panMode ? ' is-pan-mode' : ''}`} ref={boardRef} onPointerDown={startPan} style={isPrinting ? { height: boardWithTasks.height * printScale } : undefined}>
@@ -1174,7 +1893,7 @@ export default function NoteWall() {
               return (
                 <article
                   key={note.id}
-                  className={`note-wall-card${String(selectedCardId) === String(note.id) ? ' is-selected' : ''}`}
+                  className={`note-wall-card${boardId ? ' is-standalone' : ''}${String(selectedCardId) === String(note.id) ? ' is-selected' : ''}`}
                   data-note-id={String(note.id)}
                   data-node-id={String(note.id)}
                   data-node-type="note"
@@ -1184,6 +1903,11 @@ export default function NoteWall() {
                     if (!event.target.closest('button')) {
                       selectCard(note.id);
                     }
+                  }}
+                  onDoubleClick={(event) => {
+                    if (event.target.closest('button, details, a')) return;
+                    selectCard(note.id);
+                    setSelectedNote(note);
                   }}
                   onKeyDown={(event) => {
                     if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
@@ -1207,11 +1931,26 @@ export default function NoteWall() {
                   </button>
                   <button type="button" className="note-wall-open" onClick={() => { selectCard(note.id); setSelectedNote(note); }}><strong>{getWallNoteTitle(note)}</strong><Eye size={14} /></button>
                   {renderCommentButton('note', note.id, getWallNoteTitle(note))}
-                  <p>{note.text || ''}</p>
+                  {boardId && <NoteActionsMenu
+                    noteTitle={getWallNoteTitle(note)}
+                    onEdit={() => openBoardNoteEditor(note)}
+                    onDelete={() => setPendingDeleteItem({ id: note.id, title: getWallNoteTitle(note), type: 'note' })}
+                  />}
+                  {boardId && note.markdown !== false
+                    ? <div className="note-wall-note-preview"><MarkdownContent
+                        source={note.text || ''}
+                        compactLinks
+                        pinnedLinks={note.pinnedLinks || []}
+                        onPinLink={boardId ? (link) => togglePinnedMarkdownLink(note.id, link) : undefined}
+                      /></div>
+                    : <p>{note.text || ''}</p>}
                   <div className="note-wall-card-meta">
                     <span>{note.category || 'Inbox'}</span>
                     {(note.tags || []).map((tag) => <span key={tag}>#{tag}</span>)}
                   </div>
+                  {visibleWebClips
+                    .filter((clip) => String(clip.attachedTo) === String(note.id))
+                    .map((clip) => renderWebClipCard(clip, note))}
                   {wall.connections.filter((connection) => ((connection.fromType || 'note') === 'note' && String(connection.from) === String(note.id)) || ((connection.toType || 'note') === 'note' && String(connection.to) === String(note.id))).map((connection) => (
                     <button
                       key={connection.id}
@@ -1252,6 +1991,69 @@ export default function NoteWall() {
                 </article>
               );
             })}
+            {boardId && visibleNotes.flatMap((note) => (note.pinnedLinks || []).map((link) => {
+              const offset = link.anchorOffset || getAttachedLinkOffset(note, 0, wall);
+              const notePosition = wall.positions[note.id] || { x: 30, y: 30 };
+              const linkLabel = link.label || link.url;
+              const safeLabel = linkLabel.replaceAll('[', '\\[').replaceAll(']', '\\]');
+              const markdownUrl = link.url.replaceAll(')', '%29');
+              return (
+                <article
+                  key={`pinned-markdown-link:${link.id}`}
+                  className="note-wall-pinned-markdown-link"
+                  aria-label={`Pinned note link: ${linkLabel}`}
+                  data-note-id={String(note.id)}
+                  style={{
+                    left: notePosition.x + offset.x,
+                    top: notePosition.y + offset.y,
+                    '--note-wall-link-width': `${getPinnedLinkWidth(linkLabel)}px`,
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="note-wall-pinned-markdown-link-toolbar">
+                    <button
+                      type="button"
+                      className="note-wall-pinned-markdown-link-move"
+                      aria-label={`Move pinned link ${linkLabel}`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const point = getBoardPoint(event);
+                        gestureRef.current = {
+                          type: 'move-node',
+                          nodeType: 'markdownLink',
+                          id: link.id,
+                          noteId: note.id,
+                          offsetX: point.x - notePosition.x - offset.x,
+                          offsetY: point.y - notePosition.y - offset.y,
+                        };
+                      }}
+                    >⠿</button>
+                    <button
+                      type="button"
+                      className="note-wall-pinned-markdown-link-unpin"
+                      aria-label={`Unpin ${linkLabel} from note`}
+                      title="Unpin link"
+                      onClick={() => togglePinnedMarkdownLink(note.id, link)}
+                    ><Pin size={13} fill="currentColor" /></button>
+                    <details className="note-wall-link-actions-menu note-wall-pinned-link-actions-menu" onClick={(event) => event.stopPropagation()}>
+                      <summary role="button" aria-label={`More actions for link ${linkLabel}`} title="More link actions"><Ellipsis size={16} /></summary>
+                      <div className="note-wall-webclip-pin-options">
+                        <button type="button" onClick={(event) => {
+                          event.currentTarget.closest('details')?.removeAttribute('open');
+                          openLinkEditor('markdownLink', link, note.id);
+                        }}><Pencil size={13} /> Edit link</button>
+                        <button type="button" className="is-destructive" onClick={(event) => {
+                          event.currentTarget.closest('details')?.removeAttribute('open');
+                          setPendingDeleteItem({ id: link.id, noteId: note.id, title: linkLabel, type: 'markdownLink' });
+                        }}><Trash2 size={13} /> Delete link</button>
+                      </div>
+                    </details>
+                  </div>
+                  <MarkdownContent compactLinks source={`[${safeLabel}](${markdownUrl})`} />
+                </article>
+              );
+            }))}
             {visibleAttachments.map((attachment) => {
               const position = wall.positions[attachment.id] || { x: 30, y: 30 };
               const dimensions = wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE;
@@ -1284,7 +2086,7 @@ export default function NoteWall() {
                     className="note-wall-attachment-remove"
                     aria-label={`Remove attachment ${attachment.name}`}
                     title="Remove attachment"
-                    onClick={() => removeAttachment(attachment)}
+                    onClick={() => setPendingDeleteItem({ ...attachment, type: 'attachment' })}
                   ><Trash2 size={14} /></button>
                   {renderCommentButton('attachment', attachment.id, attachment.name)}
                   <div className="note-wall-attachment-preview">
@@ -1344,83 +2146,7 @@ export default function NoteWall() {
                 </article>
               );
             })}
-            {visibleWebClips.map((clip) => {
-              const position = wall.positions[clip.id] || { x: 30, y: 30 };
-              const dimensions = wall.sizes?.[clip.id] || DEFAULT_WEB_CLIP_SIZE;
-              return (
-                <article
-                  key={`webclip:${clip.id}`}
-                  className="note-wall-webclip"
-                  data-node-id={String(clip.id)}
-                  data-node-type="webclip"
-                  aria-label={`Web clip: ${clip.title}`}
-                  style={{ left: position.x, top: position.y, width: dimensions.width, height: dimensions.height }}
-                >
-                  <button
-                    type="button"
-                    className="note-wall-webclip-move"
-                    aria-label={`Move web clip ${clip.title}`}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const point = getBoardPoint(event);
-                      gestureRef.current = { type: 'move-node', nodeType: 'webclip', id: clip.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
-                    }}
-                  >
-                    <span aria-hidden="true">⠿</span>
-                    <span>WEB CLIP · {clip.siteName}</span>
-                  </button>
-                  {renderCommentButton('webclip', clip.id, clip.title)}
-                  {clip.image && <img className="note-wall-webclip-image" src={clip.image} alt="" loading="lazy" />}
-                  <a className="note-wall-webclip-title" href={clip.url} target="_blank" rel="noopener noreferrer">{clip.title}</a>
-                  {clip.description && <p className="note-wall-webclip-description">{clip.description}</p>}
-                  <div className="note-wall-webclip-meta">
-                    {clip.author && <span>{clip.author}</span>}
-                    {clip.publishedAt && <span>{clip.publishedAt}</span>}
-                    <a href={clip.url} target="_blank" rel="noopener noreferrer" title={clip.url}>{new URL(clip.url).hostname}</a>
-                  </div>
-                  {CONNECTION_ANCHORS.map((anchor) => (
-                    <button
-                      key={anchor}
-                      type="button"
-                      className={`note-wall-connect-handle is-${anchor}`}
-                      aria-label={`Drag from ${anchor} edge of ${clip.title} to connect`}
-                      title={`Drag from ${anchor} edge to connect`}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        gestureRef.current = { type: 'connect', nodeType: 'webclip', id: clip.id, anchor };
-                        setConnectionPreview({ from: clip.id, fromType: 'webclip', anchor, ...getBoardPoint(event) });
-                      }}
-                    />
-                  ))}
-                  {wall.connections.filter((connection) =>
-                    (connection.fromType === 'webclip' && String(connection.from) === String(clip.id))
-                    || (connection.toType === 'webclip' && String(connection.to) === String(clip.id))).map((connection) => (
-                    <button
-                      key={connection.id}
-                      type="button"
-                      className="note-wall-unlink"
-                      aria-label="Remove connection"
-                      title="Remove connection"
-                      onClick={() => setWall((current) => ({ ...current, connections: current.connections.filter((item) => item.id !== connection.id) }))}
-                    ><Unlink size={13} /></button>
-                  ))}
-                  <button
-                    type="button"
-                    className="note-wall-resize-handle"
-                    aria-label={`Resize web clip ${clip.title}`}
-                    title="Resize web clip"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const point = getBoardPoint(event);
-                      gestureRef.current = { type: 'resize', id: clip.id, startX: point.x, startY: point.y, width: dimensions.width, height: dimensions.height };
-                    }}
-                  />
-                </article>
-              );
-            })}
+            {visibleWebClips.filter((clip) => !clip.attachedTo).map((clip) => renderWebClipCard(clip))}
             {visibleTasks.map((task) => {
               const position = wall.taskPositions?.[task.id] || { x: 900, y: 42 };
               const category = task.category || 'Inbox';
@@ -1429,7 +2155,7 @@ export default function NoteWall() {
               return (
                 <article
                   key={`task:${task.id}`}
-                  className="note-wall-task"
+                  className={`note-wall-task${boardId ? ' is-standalone' : ''}`}
                   data-node-id={String(task.id)}
                   data-node-type="task"
                   style={{ left: position.x, top: position.y, '--task-folder-color': folderColor }}
@@ -1457,6 +2183,24 @@ export default function NoteWall() {
                     <span>Priority: {priority.charAt(0).toUpperCase() + priority.slice(1)}</span>
                   </div>
                   {renderCommentButton('task', task.id, task.title || 'Untitled task')}
+                  {boardId && (
+                    <>
+                      <button
+                        type="button"
+                        className="note-wall-board-task-toggle"
+                        aria-label={task.completed ? `Mark task ${task.title} open` : `Mark task ${task.title} complete`}
+                        title={task.completed ? 'Mark open' : 'Mark complete'}
+                        onClick={() => toggleBoardTask(task.id)}
+                      >{task.completed ? <CheckCircle2 size={15} /> : <Circle size={15} />}</button>
+                      <button
+                        type="button"
+                        className="note-wall-board-task-remove"
+                        aria-label={`Delete task ${task.title}`}
+                        title="Delete task"
+                        onClick={() => setPendingDeleteItem({ id: task.id, title: task.title, type: 'task' })}
+                      ><Trash2 size={13} /></button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className="note-wall-task-connect"
@@ -1544,12 +2288,101 @@ export default function NoteWall() {
           </section>
         </div>
       )}
+      {showAddLinkDialog && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setShowAddLinkDialog(false)}>
+          <section className="note-wall-modal note-wall-add-link-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-add-link-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close add link" onClick={() => setShowAddLinkDialog(false)}><X size={17} /></button>
+            <h2 id="note-wall-add-link-title">Pin a link to the wall</h2>
+            <p>Add a page URL as a movable card. Kazedesk will try to load its thumbnail and author; some sites block browser access to page metadata. You can drag the card beside a note and connect it on the board.</p>
+            <form className="note-wall-add-link-form" onSubmit={addWebClip}>
+              <label htmlFor="note-wall-add-link-url">Page URL</label>
+              <input
+                id="note-wall-add-link-url"
+                type="url"
+                required
+                autoFocus
+                value={webClipUrl}
+                onChange={(event) => setWebClipUrl(event.target.value)}
+                placeholder="https://example.com/article"
+              />
+              <label htmlFor="note-wall-add-link-title-input">Title <span>(optional)</span></label>
+              <input
+                id="note-wall-add-link-title-input"
+                type="text"
+                maxLength={240}
+                value={webClipTitle}
+                onChange={(event) => setWebClipTitle(event.target.value)}
+                placeholder="Defaults to the website name"
+              />
+              {webClipError && <p className="note-wall-add-link-error" role="alert">{webClipError}</p>}
+              <div className="note-wall-add-link-actions">
+                <button type="submit" className="note-wall-secondary-action" disabled={isFetchingWebClipMetadata}>
+                  <Link2 size={14} /> {isFetchingWebClipMetadata ? 'Loading page…' : 'Pin link'}
+                </button>
+                <button type="button" className="note-wall-cancel-tidy" disabled={isFetchingWebClipMetadata} onClick={() => setShowAddLinkDialog(false)}>Cancel</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {editingLink && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setEditingLink(null)}>
+          <section className="note-wall-modal note-wall-add-link-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-edit-link-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close link editor" onClick={() => setEditingLink(null)}><X size={17} /></button>
+            <h2 id="note-wall-edit-link-title">Edit link</h2>
+            <p>Update the link card title or destination.</p>
+            <form className="note-wall-add-link-form" onSubmit={saveLinkEdit}>
+              <label htmlFor="note-wall-edit-link-url">Page URL</label>
+              <input
+                id="note-wall-edit-link-url"
+                type="url"
+                required
+                autoFocus
+                value={linkDraft.url}
+                onChange={(event) => setLinkDraft((current) => ({ ...current, url: event.target.value }))}
+              />
+              <label htmlFor="note-wall-edit-link-label">Title <span>(optional)</span></label>
+              <input
+                id="note-wall-edit-link-label"
+                type="text"
+                maxLength={240}
+                value={linkDraft.label}
+                onChange={(event) => setLinkDraft((current) => ({ ...current, label: event.target.value }))}
+              />
+              {webClipError && <p className="note-wall-add-link-error" role="alert">{webClipError}</p>}
+              <div className="note-wall-add-link-actions">
+                <button type="submit" className="note-wall-secondary-action" disabled={isFetchingWebClipMetadata}>
+                  <Save size={14} /> {isFetchingWebClipMetadata ? 'Loading page…' : 'Save link'}
+                </button>
+                <button type="button" className="note-wall-cancel-tidy" disabled={isFetchingWebClipMetadata} onClick={() => setEditingLink(null)}>Cancel</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
       {selectedNote && (
         <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setSelectedNote(null)}>
           <section className="note-wall-modal" role="dialog" aria-modal="true" aria-labelledby="note-wall-modal-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" className="note-wall-modal-close" aria-label="Close note" onClick={() => setSelectedNote(null)}><X size={17} /></button>
-            <h2 id="note-wall-modal-title">{getWallNoteTitle(selectedNote)}</h2>
-            <p>{getNotePlainText(selectedNote) || 'This note has no text.'}</p>
+            <header className="note-wall-note-view-header">
+              <h2 id="note-wall-modal-title">{getWallNoteTitle(selectedNote)}</h2>
+              {boardId && <NoteActionsMenu
+                noteTitle={getWallNoteTitle(selectedNote)}
+                className="is-in-note-view"
+                onEdit={() => { setSelectedNote(null); openBoardNoteEditor(selectedNote); }}
+                onDelete={() => {
+                  setSelectedNote(null);
+                  setPendingDeleteItem({ id: selectedNote.id, title: getWallNoteTitle(selectedNote), type: 'note' });
+                }}
+              />}
+            </header>
+            {boardId && selectedNote.markdown !== false
+              ? <MarkdownContent
+                  source={selectedNote.text || 'This note has no text.'}
+                  pinnedLinks={selectedNote.pinnedLinks || []}
+                  onPinLink={boardId ? (link) => togglePinnedMarkdownLink(selectedNote.id, link) : undefined}
+                />
+              : <p>{getNotePlainText(selectedNote) || 'This note has no text.'}</p>}
             <div className="note-wall-card-meta"><span>{selectedNote.category || 'Inbox'}</span>{(selectedNote.tags || []).map((tag) => <span key={tag}>#{tag}</span>)}</div>
           </section>
         </div>
@@ -1568,16 +2401,141 @@ export default function NoteWall() {
           </section>
         </div>
       )}
-      {pendingDeleteAttachment && (
-        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setPendingDeleteAttachment(null)}>
+      {pendingDeleteItem && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setPendingDeleteItem(null)}>
           <section className="note-wall-modal note-wall-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="note-wall-delete-title" aria-describedby="note-wall-delete-description" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="note-wall-modal-close" aria-label="Cancel attachment deletion" onClick={() => setPendingDeleteAttachment(null)}><X size={17} /></button>
-            <h2 id="note-wall-delete-title">Remove attachment?</h2>
-            <p id="note-wall-delete-description">Remove “{pendingDeleteAttachment.name}” from this wall? You can undo this action. The file stays in this browser while it remains available in undo history.</p>
+            <button type="button" className="note-wall-modal-close" aria-label={`Cancel ${pendingDeleteItem.type} deletion`} onClick={() => setPendingDeleteItem(null)}><X size={17} /></button>
+            <h2 id="note-wall-delete-title">
+              {pendingDeleteItem.type === 'markdownLink'
+                ? 'Delete link?'
+                : pendingDeleteItem.type === 'note' || pendingDeleteItem.type === 'task'
+                ? `Delete ${pendingDeleteItem.type}?`
+                : `Remove ${pendingDeleteItem.type === 'webclip' ? 'web clip' : 'attachment'}?`}
+            </h2>
+            <p id="note-wall-delete-description">
+              {pendingDeleteItem.type === 'markdownLink'
+                ? `Delete “${pendingDeleteItem.title}” from this note? This cannot be undone.`
+                : pendingDeleteItem.type === 'note' || pendingDeleteItem.type === 'task'
+                ? `Delete “${pendingDeleteItem.title}” from this board? This cannot be undone.`
+                : `Remove “${pendingDeleteItem.type === 'webclip' ? pendingDeleteItem.title : pendingDeleteItem.name}” from this wall? You can undo this action.`}
+              {pendingDeleteItem.type === 'attachment' && ' The file stays in this browser while it remains available in undo history.'}
+            </p>
             <div className="note-wall-tidy-actions">
-              <button type="button" className="note-wall-delete-confirm" onClick={confirmRemoveAttachment}>Remove attachment</button>
-              <button type="button" className="note-wall-cancel-tidy" onClick={() => setPendingDeleteAttachment(null)}>Cancel</button>
+              <button type="button" className="note-wall-delete-confirm" onClick={confirmRemoveAttachment}>
+                {pendingDeleteItem.type === 'note' || pendingDeleteItem.type === 'task' || pendingDeleteItem.type === 'markdownLink' ? 'Delete' : 'Remove'} {pendingDeleteItem.type === 'webclip' ? 'web clip' : pendingDeleteItem.type === 'markdownLink' ? 'link' : pendingDeleteItem.type}
+              </button>
+              <button type="button" className="note-wall-cancel-tidy" onClick={() => setPendingDeleteItem(null)}>Cancel</button>
             </div>
+          </section>
+        </div>
+      )}
+      {showBoardNoteDialog && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setShowBoardNoteDialog(false)}>
+          <section className="note-wall-modal note-wall-board-item-dialog note-wall-board-note-dialog" role="dialog" aria-modal="true" aria-labelledby="board-note-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close note editor" onClick={() => setShowBoardNoteDialog(false)}><X size={17} /></button>
+            <header className="note-wall-board-note-header">
+              <span>{editingBoardNoteId === null ? 'BOARD NOTE' : 'EDITING NOTE'}</span>
+              <h2 id="board-note-dialog-title">{editingBoardNoteId === null ? 'Capture an idea' : 'Refine your note'}</h2>
+              <p>A quiet space for your thoughts, research, and plans.</p>
+            </header>
+            <form className="note-wall-add-link-form note-wall-board-note-form" onSubmit={saveBoardNote}>
+              <div className="note-wall-board-note-canvas">
+                <input
+                  id="board-note-title"
+                  aria-label="Title"
+                  autoFocus
+                  value={boardNoteDraft.title}
+                  maxLength={240}
+                  onChange={(event) => setBoardNoteDraft((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Give your note a title"
+                />
+                <div className="note-wall-board-note-editor-heading">
+                  <span>YOUR NOTE</span>
+                  <div className="note-wall-board-note-tabs" role="tablist" aria-label="Note editor view">
+                    <button type="button" role="tab" aria-selected={noteEditorTab === 'write'} className={noteEditorTab === 'write' ? 'is-active' : ''} onClick={() => setNoteEditorTab('write')}>Write</button>
+                    <button type="button" role="tab" aria-selected={noteEditorTab === 'preview'} className={noteEditorTab === 'preview' ? 'is-active' : ''} onClick={() => setNoteEditorTab('preview')}>Preview</button>
+                  </div>
+                </div>
+                {noteEditorTab === 'write'
+                  ? <textarea id="board-note-text" aria-label="Note" rows={9} value={boardNoteDraft.text} onChange={(event) => setBoardNoteDraft((current) => ({ ...current, text: event.target.value }))} placeholder={'Start writing…\n\nYou can use Markdown for headings, lists, links, and more.'} />
+                  : <div className="note-wall-board-note-preview" role="tabpanel" aria-label="Markdown preview">
+                    {boardNoteDraft.text.trim()
+                      ? <MarkdownContent source={boardNoteDraft.text} />
+                      : <p className="note-wall-board-note-preview-empty">Your formatted note preview will appear here.</p>}
+                  </div>}
+                <p className="note-wall-board-note-hint">Markdown supported · headings, tables, images, checklists, and more</p>
+              </div>
+              <details className="note-wall-board-note-details">
+                <summary>Organize note <span>Optional</span></summary>
+                <div className="note-wall-board-note-details-grid">
+                  <div>
+                    <label htmlFor="board-note-folder">Folder</label>
+                    <select id="board-note-folder" value={boardNoteDraft.category} onChange={(event) => setBoardNoteDraft((current) => ({ ...current, category: event.target.value }))}>
+                      {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                    </select>
+                    {!isCreatingNoteFolder
+                      ? <button type="button" className="note-wall-board-note-create-folder-toggle" onClick={() => setIsCreatingNoteFolder(true)}>+ New folder</button>
+                      : <div className="note-wall-board-note-folder-create">
+                        <input aria-label="New folder name for note" autoFocus maxLength={80} value={newNoteFolderName} onChange={(event) => { setNewNoteFolderName(event.target.value); setNewNoteFolderError(''); }} placeholder="Folder name" />
+                        <button type="button" className="note-wall-board-note-create-folder-submit" onClick={createFolderFromNoteEditor}>Add</button>
+                      </div>}
+                    {newNoteFolderError && <p className="note-wall-add-link-error" role="alert">{newNoteFolderError}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="board-note-tags">Tags <span>Separate with commas</span></label>
+                    <input id="board-note-tags" value={boardNoteDraft.tags} maxLength={500} onChange={(event) => setBoardNoteDraft((current) => ({ ...current, tags: event.target.value }))} placeholder="research, ideas" />
+                  </div>
+                </div>
+              </details>
+              <div className="note-wall-board-note-actions">
+                <button type="button" className="note-wall-board-note-cancel" onClick={() => setShowBoardNoteDialog(false)}>Cancel</button>
+                <button type="submit" className="note-wall-board-note-save">{editingBoardNoteId === null ? 'Create note' : 'Save changes'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {showBoardTaskDialog && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setShowBoardTaskDialog(false)}>
+          <section className="note-wall-modal note-wall-board-item-dialog" role="dialog" aria-modal="true" aria-labelledby="board-task-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close task editor" onClick={() => setShowBoardTaskDialog(false)}><X size={17} /></button>
+            <h2 id="board-task-dialog-title">Add a task</h2>
+            <form className="note-wall-add-link-form" onSubmit={addBoardTask}>
+              <label htmlFor="board-task-title">Task</label>
+              <input id="board-task-title" autoFocus required maxLength={240} value={boardTaskDraft.title} onChange={(event) => setBoardTaskDraft((current) => ({ ...current, title: event.target.value }))} placeholder="What needs doing?" />
+              <label htmlFor="board-task-priority">Priority</label>
+              <select id="board-task-priority" value={boardTaskDraft.priority} onChange={(event) => setBoardTaskDraft((current) => ({ ...current, priority: event.target.value }))}>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <label htmlFor="board-task-folder">Folder</label>
+              <select id="board-task-folder" value={boardTaskDraft.category} onChange={(event) => setBoardTaskDraft((current) => ({ ...current, category: event.target.value }))}>
+                {taskCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <div className="note-wall-add-link-actions">
+                <button type="submit" className="note-wall-secondary-action">Add task</button>
+                <button type="button" className="note-wall-cancel-tidy" onClick={() => setShowBoardTaskDialog(false)}>Cancel</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {showBoardFolderDialog && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setShowBoardFolderDialog(false)}>
+          <section className="note-wall-modal note-wall-board-item-dialog" role="dialog" aria-modal="true" aria-labelledby="board-folder-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close folder editor" onClick={() => setShowBoardFolderDialog(false)}><X size={17} /></button>
+            <h2 id="board-folder-dialog-title">Create a folder</h2>
+            <p>Folders are stored on this board and can organize its notes and tasks.</p>
+            <form className="note-wall-add-link-form" onSubmit={addBoardFolder}>
+              <label htmlFor="board-folder-name">Folder name</label>
+              <input id="board-folder-name" autoFocus maxLength={80} required value={boardFolderDraft} onChange={(event) => setBoardFolderDraft(event.target.value)} placeholder="e.g. Reading list" />
+              {boardFolderError && <p className="note-wall-add-link-error" role="alert">{boardFolderError}</p>}
+              <div className="note-wall-add-link-actions">
+                <button type="submit" className="note-wall-secondary-action">Create folder</button>
+                <button type="button" className="note-wall-cancel-tidy" onClick={() => setShowBoardFolderDialog(false)}>Cancel</button>
+              </div>
+            </form>
           </section>
         </div>
       )}

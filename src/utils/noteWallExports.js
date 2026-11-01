@@ -28,21 +28,23 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportWallJSON(notes, categories, wall) {
+export function exportWallJSON(notes, categories, wall, tasks = [], boardName = '') {
   const data = {
     app: 'Kazedesk',
     type: 'sticky-note-wall',
     version: 1,
     exportedAt: new Date().toISOString(),
+    ...(boardName ? { boardName } : {}),
     categories,
     notes,
+    tasks,
     wall,
   };
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'kazedesk-note-wall.json');
   return data;
 }
 
-export function exportWallMarkdown(notes, attachments = [], webClips = []) {
+export function exportWallMarkdown(notes, attachments = [], webClips = [], tasks = []) {
   const grouped = new Map();
   notes.forEach((note) => {
     const category = note.category || 'Inbox';
@@ -72,6 +74,13 @@ export function exportWallMarkdown(notes, attachments = [], webClips = []) {
       const title = clip.title.replaceAll('[', '\\[').replaceAll(']', '\\]');
       lines.push(`- [${title}](<${clip.url}>) — ${clip.siteName}`);
       if (clip.description) lines.push(`  ${clip.description}`);
+    });
+    lines.push('');
+  }
+  if (tasks.length) {
+    lines.push('## Tasks', '');
+    tasks.forEach((task) => {
+      lines.push(`- [${task.completed ? 'x' : ' '}] ${task.title || 'Untitled task'} — ${task.priority || 'medium'} priority · ${task.category || 'Inbox'}`);
     });
     lines.push('');
   }

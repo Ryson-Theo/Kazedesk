@@ -36,6 +36,65 @@ export function normalizeWebClip(input) {
   };
 }
 
+export async function fetchWebClipMetadata(value) {
+  const url = safeHttpUrl(value, 'url');
+  if (!url) throw new Error('The web clip is missing its page URL.');
+  const response = await fetch(url, {
+    headers: { Accept: 'text/html' },
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+  });
+  if (!response.ok) throw new Error(`The page returned HTTP ${response.status}.`);
+  if (!response.headers.get('content-type')?.toLowerCase().includes('text/html')) {
+    throw new Error('The page did not return HTML metadata.');
+  }
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 2_000_000) {
+    throw new Error('The page is too large to inspect for metadata.');
+  }
+  const html = await response.text();
+  if (html.length > 2_000_000) throw new Error('The page is too large to inspect for metadata.');
+
+  const page = new DOMParser().parseFromString(html, 'text/html');
+  const pageUrl = response.url || url;
+  const getMeta = (...selectors) => {
+    for (const selector of selectors) {
+      const content = page.querySelector(selector)?.getAttribute('content')?.trim();
+      if (content) return content;
+    }
+    return '';
+  };
+  const resolvePageUrl = (valueToResolve) => {
+    if (!valueToResolve) return '';
+    try {
+      return new URL(valueToResolve, pageUrl).href;
+    } catch {
+      return '';
+    }
+  };
+  const canonicalUrl = page.querySelector('link[rel="canonical"]')?.getAttribute('href');
+  const image = getMeta('meta[property="og:image"]', 'meta[name="twitter:image"]')
+    || page.querySelector('link[rel="image_src"]')?.getAttribute('href')
+    || '';
+  const title = getMeta('meta[property="og:title"]', 'meta[name="twitter:title"]') || page.title;
+  const description = getMeta('meta[property="og:description"]', 'meta[name="description"]', 'meta[name="twitter:description"]');
+  const siteName = getMeta('meta[property="og:site_name"]');
+  const author = getMeta('meta[name="author"]', 'meta[property="article:author"]', 'meta[name="article:author"]', 'meta[name="dc.creator"]');
+  const publishedAt = getMeta('meta[property="article:published_time"]');
+  return {
+    ...normalizeWebClip({
+      url: resolvePageUrl(canonicalUrl) || pageUrl,
+      title,
+      description,
+      siteName: siteName || new URL(pageUrl).hostname,
+      image: resolvePageUrl(image),
+      author,
+      publishedAt,
+    }),
+    metadataAvailable: Boolean(title || description || siteName || image || author || publishedAt),
+  };
+}
+
 export function decodeWebClipPayload(encoded) {
   if (typeof encoded !== 'string' || !encoded || encoded.length > MAX_CLIP_PAYLOAD_LENGTH) {
     throw new Error('The web clip payload is missing or too large.');

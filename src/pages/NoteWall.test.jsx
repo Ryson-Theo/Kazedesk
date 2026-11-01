@@ -249,7 +249,7 @@ describe('NoteWall', () => {
       expect(webClips).toHaveLength(1);
       expect(webClips[0]).toMatchObject(metadata);
       expect(positions[webClips[0].id]).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
-      expect(sizes[webClips[0].id]).toEqual({ width: 320, height: 260 });
+      expect(sizes[webClips[0].id]).toEqual({ width: 190, height: 68 });
     });
     expect(window.location.search).toBe('');
     expect(screen.getByRole('button', { name: 'Open comments for Focus & Flow (0)' })).toBeInTheDocument();
@@ -258,6 +258,478 @@ describe('NoteWall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
     await waitFor(() => expect(storageManager.getNoteWall().comments[`webclip:${storageManager.getNoteWall().webClips[0].id}`][0].text).toBe('Save this for the next review.'));
     window.history.replaceState({}, '', '/');
+  });
+
+  it('pins a URL as a movable web clip card using its website name by default', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.change(screen.getByLabelText('Page URL'), { target: { value: 'https://example.com/reading-list' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pin link' }));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-node-type="webclip"] a[href="https://example.com/reading-list"]')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('dialog', { name: 'Pin a link to the wall' })).not.toBeInTheDocument();
+    await waitFor(() => {
+      const { webClips, positions, sizes } = storageManager.getNoteWall();
+      expect(webClips).toHaveLength(1);
+      expect(webClips[0]).toMatchObject({
+        url: 'https://example.com/reading-list',
+        title: 'example.com',
+        siteName: 'example.com',
+        category: 'Inbox',
+        compact: true,
+      });
+      expect(positions[webClips[0].id]).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+      expect(sizes[webClips[0].id]).toEqual({ width: 190, height: 68 });
+    });
+    expect(screen.getByRole('button', { name: 'Drag from right edge of example.com to connect' })).toBeInTheDocument();
+    const clipCard = document.querySelector('[data-node-type="webclip"]');
+    expect(clipCard).toHaveClass('is-compact');
+    const clipToolbar = document.querySelector('.note-wall-webclip-toolbar');
+    expect(clipToolbar.querySelector('.note-wall-webclip-move svg')).toBeInTheDocument();
+    expect(clipToolbar.querySelector('.note-wall-webclip-kind')).toHaveTextContent('WEB CLIP');
+    expect(clipToolbar.querySelector('.note-wall-webclip-pin-menu')).toBeInTheDocument();
+    expect(clipToolbar.querySelector('.note-wall-link-actions-menu')).toBeInTheDocument();
+    expect(clipCard.querySelector('.note-wall-webclip-title')).toHaveTextContent('example.com');
+    expect(clipCard.querySelector('.note-wall-webclip-site-name')).toBeNull();
+    expect(clipCard.querySelector('.note-wall-webclip-title').parentElement).toBe(clipCard);
+    expect(clipCard.querySelector('.note-wall-webclip-preview')).toContainElement(
+      clipCard.querySelector('.note-wall-webclip-preview-title'),
+    );
+    expect(clipCard.style.getPropertyValue('--note-wall-clip-height')).toBe('68px');
+    expect(document.querySelector('.note-wall-attachment-status')).toHaveTextContent('Page metadata unavailable');
+  });
+
+  it('pins external clips to a note, keeps the deck attached while moving the note, and unpins them in place', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const board = storageManager.createNoteWallBoard('Anchored links');
+    storageManager.saveNoteWallBoard(board.id, {
+      notes: [{ id: 'anchor-note', title: 'Anchor note', text: 'Keep this close.', category: 'Inbox', markdown: true }],
+      wall: { positions: { 'anchor-note': { x: 100, y: 80 } } },
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.change(screen.getByLabelText('Page URL'), { target: { value: 'https://example.com/article' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pin link' }));
+
+    await waitFor(() => expect(document.querySelector('[data-node-type="webclip"]')).toBeInTheDocument());
+    const clip = storageManager.getNoteWallBoard(board.id).wall.webClips[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Pin example.com to a note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pin to Anchor note' }));
+
+    await waitFor(() => {
+      const savedWall = storageManager.getNoteWallBoard(board.id).wall;
+      expect(savedWall.webClips[0].attachedTo).toBe('anchor-note');
+      expect(savedWall.webClips[0].anchorOffset).toEqual({ x: expect.any(Number), y: expect.any(Number) });
+      expect(document.querySelector('.note-wall-card [data-node-type="webclip"]')).toBeInTheDocument();
+    });
+    const attachedClip = document.querySelector('.note-wall-webclip.is-attached');
+    const attachedNote = document.querySelector('.note-wall-card');
+    const clipHeader = attachedClip.querySelector('.note-wall-webclip-toolbar');
+    expect(clipHeader.querySelector('.note-wall-webclip-move svg')).toBeInTheDocument();
+    expect(clipHeader.querySelector('.note-wall-webclip-kind')).toHaveTextContent('PINNED');
+    expect(attachedClip.querySelector('.note-wall-webclip-title')).toHaveTextContent('example.com');
+    expect(attachedClip.querySelector('.note-wall-webclip-toolbar .note-wall-webclip-pin-menu')).toBeInTheDocument();
+    expect(attachedClip.querySelector('.note-wall-webclip-toolbar')).not.toContainElement(attachedClip.querySelector('.note-wall-webclip-preview'));
+    expect(attachedClip.querySelector('.note-wall-webclip-preview-title')).toHaveTextContent('example.com');
+    expect(attachedClip.querySelector('.note-wall-webclip-title').parentElement).toBe(attachedClip);
+
+    const clipStart = storageManager.getNoteWallBoard(board.id).wall.positions[clip.id];
+    fireEvent.mouseEnter(attachedClip);
+    expect(attachedClip.style.getPropertyValue('--note-wall-clip-height')).toBe('68px');
+    expect(attachedNote.style.height).toBe('190px');
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Anchor note' }), { clientX: 110, clientY: 90 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 120 });
+    fireEvent.pointerUp(window, { clientX: 150, clientY: 120 });
+    await waitFor(() => {
+      const savedWall = storageManager.getNoteWallBoard(board.id).wall;
+      expect(savedWall.positions[clip.id]).toEqual({ x: clipStart.x + 40, y: clipStart.y + 30 });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move or unpin example.com from note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin from note' }));
+    await waitFor(() => expect(storageManager.getNoteWallBoard(board.id).wall.webClips[0]).not.toHaveProperty('attachedTo'));
+    expect(storageManager.getNoteWallBoard(board.id).wall.positions[clip.id]).toEqual({ x: clipStart.x + 40, y: clipStart.y + 30 });
+  });
+
+  it('automatically pins Markdown links as draggable paperclip cards beside their note', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const board = storageManager.createNoteWallBoard('Internal links');
+    storageManager.saveNoteWallBoard(board.id, {
+      notes: [{ id: 'markdown-note', title: 'Markdown note', text: '[Read this](https://example.com/article)', category: 'Inbox', markdown: true }],
+      wall: { positions: { 'markdown-note': { x: 100, y: 80 } } },
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    await waitFor(() => {
+      const pinnedLink = storageManager.getNoteWallBoard(board.id).notes[0].pinnedLinks[0];
+      expect(pinnedLink).toMatchObject({
+        url: 'https://example.com/article',
+        label: 'Read this',
+        anchorOffset: { x: expect.any(Number), y: expect.any(Number) },
+      });
+      expect(storageManager.getNoteWallBoard(board.id).notes[0].text).toContain('[Read this](https://example.com/article)');
+      expect(screen.getByRole('article', { name: 'Pinned note link: Read this' })).toBeInTheDocument();
+    });
+
+    const card = screen.getByRole('article', { name: 'Pinned note link: Read this' });
+    const noteCard = document.querySelector('[data-note-id="markdown-note"].note-wall-card');
+    expect(card.parentElement).toHaveClass('note-wall-board');
+    expect(noteCard).not.toContainElement(card);
+    const originalOffset = storageManager.getNoteWallBoard(board.id).notes[0].pinnedLinks[0].anchorOffset;
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Move pinned link Read this' }), { clientX: 340, clientY: 260 });
+    fireEvent.pointerMove(window, { clientX: 365, clientY: 275 });
+    fireEvent.pointerUp(window, { clientX: 365, clientY: 275 });
+    await waitFor(() => {
+      expect(storageManager.getNoteWallBoard(board.id).notes[0].pinnedLinks[0].anchorOffset).toEqual({
+        x: originalOffset.x + 25,
+        y: originalOffset.y + 15,
+      });
+      expect(card).toBeInTheDocument();
+      expect(card.parentElement).toHaveClass('note-wall-board');
+    });
+  });
+
+  it('keeps an internal link card fixed while its metadata preview opens in a portal', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      '<html><head><title>Article title</title><meta property="og:title" content="Article title"><meta name="author" content="Page author"></head></html>',
+      { headers: { 'content-type': 'text/html' } },
+    )));
+    const board = storageManager.createNoteWallBoard('Stable link hover');
+    storageManager.saveNoteWallBoard(board.id, {
+      notes: [{
+        id: 'stable-link-note',
+        title: 'Stable link note',
+        text: '[Article](https://hover-stability.example/article)',
+        category: 'Inbox',
+        markdown: true,
+        pinnedLinks: [{
+          id: 'stable-link',
+          label: 'Article',
+          url: 'https://hover-stability.example/article',
+          anchorOffset: { x: 220, y: 170 },
+        }],
+      }],
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    const card = screen.getByRole('article', { name: 'Pinned note link: Article' });
+    const link = card.querySelector('.note-wall-markdown-link-preview');
+    expect(link).toHaveClass('is-compact');
+    const toolbar = card.querySelector('.note-wall-pinned-markdown-link-toolbar');
+    expect(toolbar.querySelector('.note-wall-pinned-markdown-link-unpin')).toBeInTheDocument();
+    expect(toolbar.querySelector('.note-wall-link-actions-menu')).toBeInTheDocument();
+    expect(toolbar).not.toContainElement(link);
+    fireEvent.mouseEnter(card);
+    expect(card.style.height).toBe('');
+    expect(card.style.left).not.toBe('');
+    expect(card.style.getPropertyValue('--note-wall-link-width')).toBe('190px');
+    expect(card.querySelector('.note-wall-markdown-link-label')).toBeInTheDocument();
+    expect(card.querySelector('.note-wall-markdown-link-host')).toBeInTheDocument();
+    await waitFor(() => expect(link).toHaveAttribute('aria-label', 'Article title · hover-stability.example'));
+    fireEvent.mouseEnter(link);
+    const popup = await screen.findByRole('link', { name: 'Open Article title' });
+
+    expect(card).not.toContainElement(popup);
+    expect(popup).toHaveTextContent('By Page author');
+    expect(card.querySelectorAll('.note-wall-markdown-link-preview')).toHaveLength(1);
+    expect(card.querySelector('.note-wall-markdown-link-expanded')).toBeNull();
+  });
+
+  it('edits or deletes a pinned Markdown link from its three-dot menu', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const board = storageManager.createNoteWallBoard('Link actions');
+    storageManager.saveNoteWallBoard(board.id, {
+      notes: [{
+        id: 'link-actions-note',
+        title: 'Link actions note',
+        text: '[Original label](https://example.com/original)',
+        category: 'Inbox',
+        markdown: true,
+        pinnedLinks: [{
+          id: 'editable-link',
+          label: 'Original label',
+          url: 'https://example.com/original',
+          anchorOffset: { x: 220, y: 170 },
+        }],
+      }],
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Original label' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit link' }));
+    expect(screen.getByRole('dialog', { name: 'Edit link' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Page URL'), { target: { value: 'https://example.com/updated' } });
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Updated label' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save link' }));
+    await waitFor(() => {
+      expect(storageManager.getNoteWallBoard(board.id).notes[0].pinnedLinks[0]).toMatchObject({
+        id: 'editable-link',
+        label: 'Updated label',
+        url: 'https://example.com/updated',
+      });
+      expect(storageManager.getNoteWallBoard(board.id).notes[0].text).toContain('[Updated label](https://example.com/updated)');
+    });
+    expect(screen.queryByRole('dialog', { name: 'Edit link' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Updated label' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete link' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Delete “Updated label” from this note?');
+    fireEvent.click(screen.getByRole('alertdialog').querySelector('.note-wall-delete-confirm'));
+    await waitFor(() => expect(storageManager.getNoteWallBoard(board.id).notes[0].pinnedLinks).toHaveLength(0));
+  });
+
+  it('edits an external web clip from its three-dot menu', async () => {
+    const board = storageManager.createNoteWallBoard('Edit web clip');
+    storageManager.saveNoteWallBoard(board.id, {
+      wall: {
+        webClips: [{
+          id: 'editable-web-clip',
+          url: 'https://example.com/article',
+          title: 'Original article',
+          siteName: 'Example',
+          description: 'Existing metadata',
+          image: '',
+          author: '',
+          publishedAt: '',
+          category: 'Inbox',
+          compact: true,
+        }],
+        positions: { 'editable-web-clip': { x: 360, y: 80 } },
+      },
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Original article' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit link' }));
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Revised article' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save link' }));
+    await waitFor(() => {
+      expect(storageManager.getNoteWallBoard(board.id).wall.webClips[0]).toMatchObject({
+        id: 'editable-web-clip',
+        title: 'Revised article',
+        url: 'https://example.com/article',
+        description: 'Existing metadata',
+      });
+    });
+
+  });
+
+  it('closes link menus when clicking elsewhere on the board', () => {
+    const board = storageManager.createNoteWallBoard('Outside click');
+    storageManager.saveNoteWallBoard(board.id, {
+      wall: {
+        webClips: [{
+          id: 'outside-click-clip',
+          url: 'https://example.com/article',
+          title: 'Outside click link',
+          siteName: 'Example',
+          compact: true,
+        }],
+        positions: { 'outside-click-clip': { x: 360, y: 80 } },
+      },
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    const pinMenu = document.querySelector('.note-wall-webclip-pin-menu');
+    fireEvent.click(screen.getByRole('button', { name: 'Pin Outside click link to a note' }));
+    expect(pinMenu).toHaveAttribute('open');
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Add task', exact: true }));
+    expect(pinMenu).not.toHaveAttribute('open');
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Outside click link' }));
+    const actionMenu = document.querySelector('.note-wall-link-actions-menu');
+    expect(actionMenu).toHaveAttribute('open');
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Add note', exact: true }));
+    expect(actionMenu).not.toHaveAttribute('open');
+  });
+
+  it('loads thumbnail and author metadata when pinning a URL and preserves a custom title', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`
+      <meta property="og:title" content="Page title">
+      <meta property="og:image" content="https://example.com/thumb.jpg">
+      <meta name="author" content="Page author">
+    `, { status: 200, headers: { 'content-type': 'text/html' } })));
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.change(screen.getByLabelText('Page URL'), { target: { value: 'https://example.com/story' } });
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'My saved title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pin link' }));
+
+    expect(await screen.findByRole('link', { name: 'My saved title' })).toHaveAttribute('href', 'https://example.com/story');
+    await waitFor(() => {
+      expect(document.querySelector('[data-node-type="webclip"] img')).toHaveAttribute('src', 'https://example.com/thumb.jpg');
+      expect(storageManager.getNoteWall().webClips[0]).toMatchObject({
+        title: 'My saved title',
+        author: 'Page author',
+        image: 'https://example.com/thumb.jpg',
+        compact: false,
+      });
+      expect(storageManager.getNoteWall().sizes[storageManager.getNoteWall().webClips[0].id]).toEqual({ width: 190, height: 68 });
+    });
+    expect(document.querySelector('.note-wall-webclip-title')).toHaveTextContent('My saved title');
+    expect(document.querySelector('.note-wall-webclip-site-name')).toHaveTextContent('example.com');
+    expect(document.querySelector('.note-wall-webclip-preview')).toContainElement(
+      document.querySelector('.note-wall-webclip-image'),
+    );
+    expect(document.querySelector('.note-wall-attachment-status')).toHaveTextContent('Thumbnail and author loaded');
+  });
+
+  it('confirms web clip removal and supports undo and redo', async () => {
+    const clip = {
+      id: 'clip-delete',
+      url: 'https://example.com/article',
+      title: 'Saved article',
+      siteName: 'Example',
+      description: '',
+      image: '',
+      author: '',
+      publishedAt: '',
+      category: 'Inbox',
+    };
+    storageManager.saveNoteWall({
+      webClips: [clip],
+      positions: { [clip.id]: { x: 360, y: 30 } },
+      sizes: { [clip.id]: { width: 320, height: 260 } },
+      connections: [{ id: 'clip-line', from: '1', to: clip.id, fromType: 'note', toType: 'webclip' }],
+      comments: { [`webclip:${clip.id}`]: [{ id: 'comment-1', text: 'Read this later.' }] },
+    });
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Saved article' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete link' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Remove “Saved article” from this wall? You can undo this action.');
+    expect(storageManager.getNoteWall().webClips).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(storageManager.getNoteWall().webClips).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for link Saved article' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove web clip', exact: true }));
+    await waitFor(() => {
+      const wall = storageManager.getNoteWall();
+      expect(wall.webClips).toHaveLength(0);
+      expect(wall.positions[clip.id]).toBeUndefined();
+      expect(wall.sizes[clip.id]).toBeUndefined();
+      expect(wall.comments[`webclip:${clip.id}`]).toBeUndefined();
+      expect(wall.connections).toHaveLength(0);
+    });
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => {
+      const wall = storageManager.getNoteWall();
+      expect(wall.webClips).toEqual([clip]);
+      expect(wall.comments[`webclip:${clip.id}`]).toHaveLength(1);
+      expect(wall.connections).toHaveLength(1);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    await waitFor(() => expect(storageManager.getNoteWall().webClips).toHaveLength(0));
+  });
+
+  it('creates independent board notes and tasks without changing dashboard data', async () => {
+    const dashboardNotes = storageManager.getStickyNotes();
+    storageManager.saveTasks([{ id: 'dashboard-task', title: 'Dashboard task', category: 'Inbox' }]);
+    storageManager.saveNoteWall({ webClips: [{ id: 'dashboard-clip', url: 'https://dashboard.example' }] });
+    const board = storageManager.createNoteWallBoard('Research');
+
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+    expect(screen.getByRole('heading', { name: 'Research' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'New folder', exact: true })[0]);
+    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Ideas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create folder' }));
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add note', exact: true })[0]);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Project thought' } });
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Keep this on the research board.' } });
+    fireEvent.click(screen.getByText('Organize note'));
+    fireEvent.change(screen.getByLabelText('Tags Separate with commas'), { target: { value: 'research, planning' } });
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Ideas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
+    expect(await screen.findByText('Project thought', { selector: 'strong' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add task', exact: true }));
+    fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Review research' } });
+    fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'high' } });
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Ideas' } });
+    fireEvent.click(screen.getByRole('dialog', { name: 'Add a task' }).querySelector('button[type="submit"]'));
+    await waitFor(() => {
+      const savedBoard = storageManager.getNoteWallBoard(board.id);
+      expect(savedBoard.categories).toContain('Ideas');
+      expect(savedBoard.taskCategories).toContain('Ideas');
+      expect(savedBoard.notes).toMatchObject([{ title: 'Project thought', text: 'Keep this on the research board.', tags: ['research', 'planning'], category: 'Ideas' }]);
+      expect(savedBoard.tasks).toMatchObject([{ title: 'Review research', priority: 'high', completed: false, category: 'Ideas' }]);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark task Review research complete' }));
+    await waitFor(() => expect(storageManager.getNoteWallBoard(board.id).tasks[0].completed).toBe(true));
+    expect(storageManager.getStickyNotes()).toEqual(dashboardNotes);
+    expect(storageManager.getTasks()).toEqual([{ id: 'dashboard-task', title: 'Dashboard task', category: 'Inbox' }]);
+    expect(storageManager.getNoteWall().webClips).toEqual([{ id: 'dashboard-clip', url: 'https://dashboard.example' }]);
+  });
+
+  it('creates a board folder from the note editor and previews safe, editable Markdown', async () => {
+    const board = storageManager.createNoteWallBoard('Markdown notes');
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add note', exact: true })[0]);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Reading notes' } });
+    const markdown = '## Key idea\n\n**Keep this** useful.\n\n<img src=x onerror=alert(1)>';
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: markdown } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview' }));
+    const preview = screen.getByRole('tabpanel', { name: 'Markdown preview' });
+    expect(preview.querySelector('h2')).toHaveTextContent('Key idea');
+    expect(preview.querySelector('strong')).toHaveTextContent('Keep this');
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.textContent).toContain('<img src=x onerror=alert(1)>');
+
+    fireEvent.click(screen.getByText('Organize note'));
+    fireEvent.click(screen.getByRole('button', { name: '+ New folder' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New folder name for note' }), { target: { value: 'Reading' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }));
+    expect(screen.getByLabelText('Folder')).toHaveValue('Reading');
+    fireEvent.click(screen.getByRole('tab', { name: 'Write' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
+
+    await waitFor(() => {
+      expect(storageManager.getNoteWallBoard(board.id).notes).toMatchObject([
+        { title: 'Reading notes', text: markdown, category: 'Reading', markdown: true },
+      ]);
+    });
+    const savedCard = screen.getByRole('article', { name: 'Select Reading notes card to change its color' });
+    expect(savedCard.querySelector('.note-wall-note-preview h2')).toHaveTextContent('Key idea');
+    expect(savedCard.querySelector('.note-wall-note-preview strong')).toHaveTextContent('Keep this');
+    expect(savedCard.querySelector('.note-wall-note-preview img')).toBeNull();
+
+    fireEvent.doubleClick(screen.getByRole('article', { name: 'Select Reading notes card to change its color' }));
+    expect(screen.getByRole('dialog', { name: 'Reading notes' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Reading notes' }).querySelector('.note-wall-markdown-content h2')).toHaveTextContent('Key idea');
+    const noteCard = screen.getByRole('article', { name: 'Select Reading notes card to change its color' });
+    fireEvent.click(noteCard.querySelector('summary'));
+    expect(noteCard.querySelector('[role="menu"]')).toBeInTheDocument();
+    fireEvent.click(noteCard.querySelector('[role="menuitem"]'));
+    expect(screen.getByLabelText('Note')).toHaveValue(markdown);
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview' }));
+    expect(screen.getByRole('tabpanel', { name: 'Markdown preview' }).querySelector('img')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.doubleClick(screen.getByRole('article', { name: 'Select Reading notes card to change its color' }));
+    const noteView = screen.getByRole('dialog', { name: 'Reading notes' });
+    fireEvent.click(noteView.querySelector('summary'));
+    fireEvent.click(noteView.querySelectorAll('[role="menuitem"]')[1]);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Delete “Reading notes” from this board?');
+  });
+
+  it('rejects unsafe URLs when manually pinning a link', async () => {
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.change(screen.getByLabelText('Page URL'), { target: { value: 'javascript:alert(1)' } });
+    fireEvent.submit(screen.getByRole('dialog', { name: 'Pin a link to the wall' }).querySelector('form'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('valid http or https');
+    expect(storageManager.getNoteWall().webClips).toHaveLength(0);
   });
 
   it('provides bookmarklet setup instructions with a copy control', () => {

@@ -28,6 +28,7 @@ The diagram shows the main runtime boundaries. Local data remains in the browser
 | `src/main.jsx` | React entry point and global stylesheet initialization. |
 | `src/App.jsx` | Route declarations for the landing page and dashboard. |
 | `src/pages/` | Route-level page composition. |
+| `src/pages/NoteWallBoards.jsx` | Creates and manages independent named note-wall boards. |
 | `src/components/` | Dashboard widgets and landing-page sections. |
 | `src/components/landing/` | Components specific to the public landing page. |
 | `src/styles/` | Component and page stylesheets. |
@@ -40,6 +41,8 @@ The diagram shows the main runtime boundaries. Local data remains in the browser
 `src/App.jsx` uses React Router to map `/` to the landing page and `/dashboard` to the workspace. `src/pages/Dashboard.jsx` composes the widgets and owns dashboard-level layout, drag/resize interactions, and appearance state. Individual widgets own their feature-specific interaction and presentation.
 
 The dashboard layout and user-created content are persisted in browser storage. `src/utils/localStorage.js` centralizes several storage operations and default values; some older widget settings still use their legacy storage keys directly. When changing persisted data, preserve existing keys or provide an explicit migration so existing users do not lose their work.
+
+The original `/wall` continues to read the dashboard's sticky notes and tasks. Independent boards are listed at `/wall/boards` and store their own notes, tasks, folders, layout, connections, comments, links, and attachment references under a separate local-storage key. Board-owned content does not write to dashboard note or task keys. Board notes preserve Markdown source and render a safe preview (headings, inline formatting, lists, links, images, tables, footnotes, and other common syntax) without interpreting embedded HTML. Markdown links in board-note source are automatically stored as note-relative paperclip cards when the note is created, edited, or loaded; existing offsets remain stable. Web clips can be attached to a note through their pin menu and store both the note ID and a relative offset, while their wall position remains synchronized for connections and exports. Attached links stack near the note's lower-right edge, can be dragged independently, and move with their note. Link cards render as compact rectangles, expand on hover, and expose edit/delete actions from an outside-click-dismissible menu. Folders can be created while editing a note. Attachment blobs remain in IndexedDB and are referenced by board-specific IDs.
 
 ```mermaid
 flowchart TD
@@ -93,6 +96,7 @@ The weather interaction is shown separately because it sends the user-entered ci
 ## External integrations
 
 - **Weather:** the configured city is sent to Open-Meteo's geocoding API; the returned coordinates are used for a current-conditions request to Open-Meteo's forecast API. Results are cached per browser.
+- **Web clips:** direct URL pins try to fetch public HTML metadata without credentials. Cross-origin restrictions mean many sites block this; the browser bookmarklet reads metadata on the source page as a fallback. Preview images are loaded from the image URL supplied by the page. Compact link cards size to the title/site label; hovering reveals available metadata without scrolling. Attached web clips and Markdown links retain independent drag offsets relative to their note.
 - **YouTube:** playlist playback uses YouTube content and browser embedding behavior.
 - **Ambient visualizer:** optional system-audio capture uses `getDisplayMedia` and the Web Audio API. Browser permission, secure-context, and supported-audio-track requirements apply. Simulated mode does not access audio.
 - **Landing-page media and fonts:** some content is loaded from external providers. A network connection is needed for those resources.

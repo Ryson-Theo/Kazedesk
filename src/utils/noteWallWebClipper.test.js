@@ -3,6 +3,7 @@ import {
   createWebClipperBookmarklet,
   decodeWebClipPayload,
   encodeWebClipPayload,
+  fetchWebClipMetadata,
   normalizeWebClip,
 } from './noteWallWebClipper';
 
@@ -26,6 +27,60 @@ describe('Note Wall web clipper', () => {
     expect(() => normalizeWebClip({ url: 'javascript:alert(1)' })).toThrow(/valid http or https/);
     expect(() => normalizeWebClip({ url: 'file:///etc/passwd' })).toThrow(/valid http or https/);
     expect(normalizeWebClip({ url: 'https://example.com', image: 'data:image/svg+xml,<svg/>' }).image).toBe('');
+  });
+
+  it('fetches and normalizes page metadata, including relative preview images and canonical URLs', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`
+      <link rel="canonical" href="/story">
+      <meta property="og:title" content="A useful story">
+      <meta property="og:description" content="Story summary">
+      <meta property="og:site_name" content="Example News">
+      <meta property="og:image" content="/images/story.jpg">
+      <meta name="author" content="A. Reporter">
+      <meta property="article:published_time" content="2026-10-30">
+    `, {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    })));
+
+    await expect(fetchWebClipMetadata('https://example.com/article')).resolves.toEqual({
+      url: 'https://example.com/story',
+      title: 'A useful story',
+      description: 'Story summary',
+      siteName: 'Example News',
+      image: 'https://example.com/images/story.jpg',
+      author: 'A. Reporter',
+      publishedAt: '2026-10-30',
+      metadataAvailable: true,
+    });
+    expect(fetch).toHaveBeenCalledWith('https://example.com/article', expect.objectContaining({
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    }));
+  });
+
+  it('reports blocked requests and non-HTML pages instead of pretending metadata loaded', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(fetchWebClipMetadata('https://example.com')).rejects.toThrow('Failed to fetch');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('image bytes', {
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+    })));
+    await expect(fetchWebClipMetadata('https://example.com/image.png')).rejects.toThrow('did not return HTML');
+  });
+
+  it('marks empty pages as having no extracted metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html><body></body></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })));
+
+    await expect(fetchWebClipMetadata('https://example.com/')).resolves.toMatchObject({
+      title: 'example.com',
+      siteName: 'example.com',
+      metadataAvailable: false,
+    });
   });
 
   it('encodes and decodes a bookmarklet payload using URL-safe base64', () => {
