@@ -9,6 +9,7 @@ Describe the change and the user problem it addresses.
 ## Verification
 
 - [ ] `npm run lint`
+- [ ] `npm test`
 - [ ] `npm run build`
 - [ ] Manually checked relevant behavior
 

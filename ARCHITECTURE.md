@@ -4,7 +4,7 @@ This document describes the current implementation so contributors can make chan
 
 ## Overview
 
-Kazedesk is a client-rendered single-page application built with React and Vite. There is no application backend, database, authentication layer, or server-side rendering. The browser loads the built assets, renders the routes, and stores workspace state locally.
+Kazedesk is a client-rendered single-page application built with React and Vite. There is no application backend, server-side database, authentication layer, or server-side rendering. The browser loads the built assets, renders the routes, and stores workspace state locally.
 
 ```mermaid
 flowchart LR
@@ -12,51 +12,68 @@ flowchart LR
     Browser --> Router[React Router]
     Router --> Landing["/ · Landing page"]
     Router --> Dashboard["/dashboard · Productivity workspace"]
+    Router --> Wall["/wall · Dashboard note wall"]
+    Router --> Boards["/wall/boards · Independent board manager"]
+    Boards --> Board["/wall/boards/:boardId · Independent board"]
     Dashboard --> Widgets[Dashboard widgets]
     Widgets <--> Storage[(Browser localStorage)]
+    Wall <--> Storage
+    Boards <--> Storage
+    Board <--> Storage
+    Board --> Attachments[(Browser IndexedDB)]
     Widgets --> Weather[Weather services]
     Widgets --> YouTube[YouTube embeds]
+    Wall -. Optional private JSON save .-> Drive[Google Drive]
+    Board -. Optional private JSON save .-> Drive
     Browser --> HostedMedia[Hosted media and fonts]
 ```
 
-The diagram shows the main runtime boundaries. Local data remains in the browser; weather lookups and embedded or hosted media are requests to third-party services.
+The diagram shows the main runtime boundaries. Local data remains in the browser unless the user opts into a private Google Drive save. Weather lookups and embedded or hosted media are requests to third-party services.
 
 ## Source layout
 
 | Path | Responsibility |
 | --- | --- |
 | `src/main.jsx` | React entry point and global stylesheet initialization. |
-| `src/App.jsx` | Route declarations for the landing page and dashboard. |
+| `src/App.jsx` | Route declarations for the landing page, dashboard, dashboard wall, and independent boards. |
 | `src/pages/` | Route-level page composition. |
 | `src/pages/NoteWallBoards.jsx` | Creates and manages independent named note-wall boards. |
 | `src/components/` | Dashboard widgets and landing-page sections. |
 | `src/components/landing/` | Components specific to the public landing page. |
 | `src/styles/` | Component and page stylesheets. |
 | `src/utils/localStorage.js` | Storage keys, persistence helpers, defaults, and legacy preference migration. |
+| `src/utils/noteWallMedia.js` | IndexedDB persistence for note-wall attachment files. |
 | `src/assets/` | Images and other bundled assets. |
 | `public/` | Static files copied directly into the build output. |
 
 ## Application composition
 
-`src/App.jsx` uses React Router to map `/` to the landing page and `/dashboard` to the workspace. `src/pages/Dashboard.jsx` composes the widgets and owns dashboard-level layout, drag/resize interactions, and appearance state. Individual widgets own their feature-specific interaction and presentation.
+`src/App.jsx` uses React Router to map `/` to the landing page, `/dashboard` to the workspace, `/wall` to the dashboard-connected sticky-note wall, `/wall/boards` to the independent board manager, and `/wall/boards/:boardId` to an individual board. `src/pages/Dashboard.jsx` composes the widgets and owns dashboard-level layout, drag/resize interactions, and appearance state. Individual widgets own their feature-specific interaction and presentation.
 
 The dashboard layout and user-created content are persisted in browser storage. `src/utils/localStorage.js` centralizes several storage operations and default values; some older widget settings still use their legacy storage keys directly. When changing persisted data, preserve existing keys or provide an explicit migration so existing users do not lose their work.
 
-The original `/wall` continues to read the dashboard's sticky notes and tasks. Independent boards are listed at `/wall/boards` and store their own notes, tasks, folders, layout, connections, comments, links, and attachment references under a separate local-storage key. Board-owned content does not write to dashboard note or task keys. Board notes preserve Markdown source and render a safe preview (headings, inline formatting, lists, links, images, tables, footnotes, and other common syntax) without interpreting embedded HTML. Markdown links in board-note source are automatically stored as note-relative paperclip cards when the note is created, edited, or loaded; existing offsets remain stable. Web clips can be attached to a note through their pin menu and store both the note ID and a relative offset, while their wall position remains synchronized for connections and exports. Attached links stack near the note's lower-right edge, can be dragged independently, and move with their note. Link cards render as compact rectangles, expand on hover, and expose edit/delete actions from an outside-click-dismissible menu. Folders can be created while editing a note. Attachment blobs remain in IndexedDB and are referenced by board-specific IDs.
+The original `/wall` continues to read the dashboard's sticky notes and tasks. Independent boards are listed at `/wall/boards` and store their own notes, tasks, folders, layout, connections, comments, links, and attachment references under a separate local-storage key. Board-owned content does not write to dashboard note or task keys. Board notes preserve Markdown source and render a safe preview (headings, inline formatting, lists, links, images, tables, footnotes, and other common syntax) without interpreting embedded HTML. Markdown links in board-note source are automatically stored as note-relative paperclip cards when the note is created, edited, or loaded; existing offsets remain stable. Web clips can be attached to a note through their pin menu and store both the note ID and a relative offset, while their wall position remains synchronized for connections and exports. Attached links stack near the note's lower-right edge, can be dragged independently, and move with their note. Link cards render as compact rectangles, expand on hover, and expose edit/delete actions from an outside-click-dismissible menu. Folders can be created while editing a note. Attachment blobs remain in browser IndexedDB and are referenced by board-specific IDs; attachment file contents are not included in wall exports or Drive JSON saves.
 
 ```mermaid
 flowchart TD
     Entry["src/main.jsx"] --> App["src/App.jsx · Router"]
     App --> LandingPage["src/pages/LandingPage.jsx"]
     App --> DashboardPage["src/pages/Dashboard.jsx"]
+    App --> NoteWall["src/pages/NoteWall.jsx"]
+    App --> BoardManager["src/pages/NoteWallBoards.jsx"]
     LandingPage --> LandingComponents["Landing components"]
     LandingPage --> LandingStyles["Landing styles"]
     DashboardPage --> DashboardWidgets["Dashboard widgets"]
+    NoteWall --> WallStorage["Dashboard wall or board data"]
+    BoardManager --> WallStorage
+    NoteWall --> AttachmentStorage["src/utils/noteWallMedia.js"]
     DashboardPage --> DashboardStyles["Dashboard styles"]
     DashboardWidgets --> WidgetStyles["Widget styles"]
     DashboardWidgets --> StorageHelpers["src/utils/localStorage.js"]
     DashboardPage --> StorageHelpers
+    WallStorage --> StorageHelpers
     StorageHelpers --> BrowserStorage[(localStorage)]
+    AttachmentStorage --> IndexedDB[(Browser IndexedDB)]
 ```
 
 The page components compose the UI; widgets encapsulate feature behavior. Shared persistence helpers centralize common storage operations, while some legacy settings remain owned by their widgets.
@@ -64,7 +81,9 @@ The page components compose the UI; widgets encapsulate feature behavior. Shared
 ## Data and persistence
 
 - Data is scoped to the website origin and browser profile.
-- There is no remote synchronization or server-side backup.
+- There is no automatic remote synchronization or server-side backup. Optional user-authorized Google Drive saves create private JSON copies of the dashboard wall or an independent board.
+- Workspace preferences, board definitions, and note-wall data are stored in `localStorage`; attachment file contents are stored in `IndexedDB`.
+- Wall JSON, Markdown, and image exports do not include attachment file contents. Export attachments separately if you need to move those files.
 - The analytics widget derives its views from locally stored events.
 - Workspace export/import is intended for user-managed backups.
 - Local storage can be cleared by the browser or user and has finite capacity. Large custom backgrounds may exceed browser quotas.
@@ -98,6 +117,7 @@ The weather interaction is shown separately because it sends the user-entered ci
 - **Weather:** the configured city is sent to Open-Meteo's geocoding API; the returned coordinates are used for a current-conditions request to Open-Meteo's forecast API. Results are cached per browser.
 - **Web clips:** direct URL pins try to fetch public HTML metadata without credentials. Cross-origin restrictions mean many sites block this; the browser bookmarklet reads metadata on the source page as a fallback. Preview images are loaded from the image URL supplied by the page. Compact link cards size to the title/site label; hovering reveals available metadata without scrolling. Attached web clips and Markdown links retain independent drag offsets relative to their note.
 - **YouTube:** playlist playback uses YouTube content and browser embedding behavior.
+- **Google Drive:** optional note-wall saves use the user's authorization and the `drive.file` scope to create or update a private JSON file. Attachment files remain local and are not uploaded as part of these saves.
 - **Ambient visualizer:** optional system-audio capture uses `getDisplayMedia` and the Web Audio API. Browser permission, secure-context, and supported-audio-track requirements apply. Simulated mode does not access audio.
 - **Landing-page media and fonts:** some content is loaded from external providers. A network connection is needed for those resources.
 
@@ -114,8 +134,9 @@ Deploying under a URL prefix requires configuring Vite's `base` and React Router
 ```mermaid
 flowchart LR
     Source[Source and assets] --> Install["npm ci"]
-    Install --> Checks["npm run lint"]
-    Checks --> Build["npm run build"]
+    Install --> Lint["npm run lint"]
+    Lint --> Tests["npm test"]
+    Tests --> Build["npm run build"]
     Build --> Dist["dist/ static assets"]
     Dist --> Host[Static hosting or CDN]
     Browser --> Host
@@ -124,4 +145,12 @@ flowchart LR
 
 ## Quality checks
 
-Run `npm run lint` and `npm run build` before submitting changes. The repository's GitHub Actions workflow runs both checks for pushes and pull requests.
+Run the following checks before submitting changes:
+
+```bash
+npm run lint
+npm test
+npm run build
+```
+
+The repository's GitHub Actions workflow runs all three checks for pushes and pull requests.

@@ -14,4 +14,4 @@ Please allow maintainers reasonable time to investigate and coordinate a fix bef
 
 ## Scope notes
 
-Kazedesk runs in the browser and stores workspace information in that browser's local storage. Do not use it to store credentials or highly sensitive information. Weather lookup, YouTube embeds, and other external resources are provided by third parties and are subject to their own security and privacy practices.
+Kazedesk runs in the browser and stores workspace information in that browser's local storage and IndexedDB. Do not use it to store credentials or highly sensitive information. Weather lookup, YouTube embeds, and other external resources are provided by third parties and are subject to their own security and privacy practices. If configured and authorized by the user, note-wall saves send a private JSON copy to Google Drive; attachment files remain in the browser and are not included in those saves.

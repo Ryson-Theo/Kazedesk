@@ -10,17 +10,25 @@
 
 ## Features
 
-- A customizable dashboard with movable and resizable widgets.
-- A focus timer with configurable work and break durations.
-- Tasks with reminders, nested subtasks, daily repeat controls, and user-created folders.
-- Rich-text sticky notes with user-created folders and per-note tags.
-- Named, independent note-wall boards with their own notes, tasks, folders, attachments, web clips, comments, connections, and layouts. Board notes support editable Markdown with a safe preview (including tables, images, task lists, footnotes, and common inline syntax), hoverable paperclip-style link previews with best-effort site metadata, and folder creation in the note editor. Markdown links are automatically pinned as draggable paperclip cards when saved; external web clips can be attached from their pin menu. Link cards use compact rectangles, expand on hover, stack near the note, and follow it when moved. Use each link card's three-dot menu to edit or delete it; menus dismiss on outside click or Escape. Note cards reveal more preview content on hover and use a rounded folder-tab footer for folder and tag labels. The existing dashboard note wall remains separate and unchanged.
-- A resizable sticky-note wall with folder/tag filtering, compact task cards with hover details, a toggle to hide Inbox/unfiled tasks, and undo/redo for wall edits. Pin a web link directly or clip a page with the browser bookmarklet, then move the card beside notes and connect it to related ideas. Web clips use compact label-sized rectangles that expand on hover to show available page thumbnails, author, and metadata; sites that block browser access can still be clipped with the bookmarklet. Same-folder note links are solid, shared-tag note links are dotted, and task-to-note links in custom folders are dashed. Automatically managed crossing links use distinct colors adapted to dark/light mode; manually chosen line colors are preserved. Tidy-and-center creates missing eligible relationships, spaces and centers the visible board, and confirms whether to keep or clear existing lines. Wall changes autosave locally with visible save feedback; links can be curved or straight with selectable card/line colors. Includes full-note viewing, board panning and zooming, PNG/PDF/Markdown/JSON export, and optional private Google Drive saves.
-- Focus-session analytics stored locally.
-- A weather and clock widget, with city lookup and forecasts from Open-Meteo.
-- YouTube playlist playback (public playlists only).
-- Dashboard appearance settings, saved layouts, and workspace import/export.
-- An optional ambient visualizer with simulated animation or browser-supported system-audio capture.
+### A calmer workspace
+
+- Arrange and resize dashboard widgets around your focus.
+- Stay on track with a configurable focus timer, tasks, reminders, and nested subtasks.
+- Keep quick notes close with folders, tags, and saved dashboard layouts.
+
+### Space for your ideas
+
+- Create independent note-wall boards, each with its own notes, tasks, files, links, and layout.
+- Write notes in Markdown; pin links, clip web pages, and connect related ideas.
+- Pan, zoom, filter, and tidy your wall. Changes save locally, with undo and redo.
+- Export walls as PNG, PDF, Markdown, or JSON. Optional private Google Drive saves are available.
+
+### The details that make it yours
+
+- Review focus-session analytics and local time and weather.
+- Play public YouTube playlists.
+- Choose your look, and add ambient visuals with optional system-audio mode.
+- Import or export your workspace.
 
 ## Screenshots
 
@@ -32,7 +40,7 @@
 
 ## How it works
 
-Kazedesk is a static, client-side React app. Your workspace data stays in the current browser; only features such as weather lookup and embedded media contact external services.
+Kazedesk is a static, client-side React app. Workspace data stays in the current browser by default. Weather lookup and embedded media contact external services; optional Google Drive saves send a private JSON copy of a note wall to the signed-in user's Drive.
 
 ```mermaid
 flowchart LR
@@ -40,11 +48,19 @@ flowchart LR
     Build --> Host["Static host / CDN"]
     Visitor --> Browser
     Host --> Browser
-    Browser --> Routes["Landing page or dashboard"]
-    Routes --> Widgets["Productivity widgets"]
+    Browser --> Routes["Landing page, dashboard, or note wall"]
+    Routes --> Widgets["Dashboard widgets"]
+    Routes --> Wall["Dashboard note wall"]
+    Routes --> BoardManager["Independent board manager"]
+    BoardManager --> Board["Independent board"]
     Widgets <--> LocalStorage[(Browser localStorage)]
+    Wall <--> LocalStorage
+    Board <--> LocalStorage
+    Board --> IndexedDB[(Attachment files in IndexedDB)]
     Widgets --> Weather["Open-Meteo"]
     Widgets --> Media["YouTube and hosted media"]
+    Wall -. Optional private save .-> Drive["Google Drive"]
+    Board -. Optional private save .-> Drive
 ```
 
 ## Getting started
@@ -63,11 +79,11 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (usually `http://localhost:5173`). The landing page is at `/`, the workspace is at `/dashboard`, the dashboard-connected sticky-note wall is at `/wall`, and independent named boards are managed at `/wall/boards`.
+Open the local URL printed by Vite (usually `http://localhost:5173`). The landing page is at `/`, the workspace is at `/dashboard`, and its connected sticky-note wall is at `/wall`. Manage independent named boards at `/wall/boards` and open an individual board at `/wall/boards/:boardId`. The dashboard wall and independent boards keep their notes and tasks separate.
 
 ### Optional Google Drive saves
 
-The wall can save a JSON copy to the signed-in user's Google Drive. To enable it, create a Google OAuth web client, enable the Google Drive API for its Google Cloud project, add your development/deployed origins as authorized JavaScript origins, and copy `.env.example` to `.env.local` with the client ID. The browser app requests the `drive.file` scope and creates a private file; it does not make the file public or store OAuth access tokens in local storage. Drive saves require the user to authorize the app and are subject to Google's quotas and policies. Without this setup, local autosave and downloadable exports continue to work.
+The dashboard wall and independent boards can each save a JSON copy to the signed-in user's Google Drive. To enable it, create a Google OAuth web client, enable the Google Drive API for its Google Cloud project, add your development/deployed origins as authorized JavaScript origins, and copy `.env.example` to `.env.local` with the client ID. The browser app requests the `drive.file` scope and creates a private file; it does not make the file public or store OAuth access tokens in local storage. Drive saves require the user to authorize the app and are subject to Google's quotas and policies. Attachment files remain in this browser and are not included in wall exports or Drive JSON saves. Without Drive setup, local autosave and downloadable exports continue to work.
 
 ### Available scripts
 
@@ -92,7 +108,7 @@ Docker is not required for the current static application. See [ARCHITECTURE.md]
 
 ## Privacy and browser capabilities
 
-Kazedesk has no application server or account system. Settings, tasks, notes, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. This data does not automatically sync between browsers or devices. Clearing site data removes it; use the workspace backup feature or export the wall before changing browsers or devices. Google Drive saves are optional private copies; downloadable PNG, print-to-PDF, Markdown, and JSON exports are also available.
+Kazedesk has no application server or account system. Settings, tasks, notes, board definitions, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. Note-wall attachment file contents are stored separately in browser `IndexedDB`. This data does not automatically sync between browsers or devices. Clearing site data removes it; use the workspace backup feature or export the wall before changing browsers or devices. Google Drive saves are optional private JSON copies; downloadable PNG, print-to-PDF, Markdown, and JSON wall exports are also available. Attachment file contents are not included in those wall exports or Drive saves.
 
 The weather widget sends the configured city to Open-Meteo for geocoding and weather data, with an attribution link beside displayed weather. City lookups are cached in the browser for 30 days and forecasts for four hours. To limit accidental repeat requests, each browser profile allows up to three city lookups and six forecast requests per UTC day, with a short cooldown between same-type requests. These client-side limits can be cleared or bypassed and are not a shared quota or security boundary. Open-Meteo's free API is for non-commercial use and has daily and short-term request limits; check its [terms](https://open-meteo.com/en/terms) before launch. A shared edge cache or backend and an appropriate API plan are needed to enforce limits across visitors or support commercial use. YouTube embeds and externally hosted landing-page media may also connect to their respective providers when used. Review those providers' privacy policies if this matters to your use.
 
