@@ -67,6 +67,27 @@ describe('NoteWall', () => {
     expect(localStorage.getItem('kazedesk-landing-theme')).toBe('light');
   });
 
+  it('shows compact accessible board stats and groups secondary toolbar actions', async () => {
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'Back to dashboard' })).toBeInTheDocument();
+    expect(screen.getByLabelText('2 notes')).toBeInTheDocument();
+    expect(screen.getByLabelText('0 tasks')).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: 'Changes saved locally' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Add items'));
+    expect(screen.getByRole('button', { name: 'Add attachment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add link' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Web clipper' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Export', { selector: 'summary' }));
+    expect(screen.getByRole('button', { name: 'Export PNG' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Print / PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export Markdown' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export JSON' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save to Drive' })).toBeInTheDocument();
+  });
+
   it('uploads an image as a movable wall node, previews it, and removes its stored file', async () => {
     noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
     noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['image bytes'], { type: 'image/png' }));
@@ -536,12 +557,14 @@ describe('NoteWall', () => {
     const pinMenu = document.querySelector('.note-wall-webclip-pin-menu');
     fireEvent.click(screen.getByRole('button', { name: 'Pin Outside click link to a note' }));
     expect(pinMenu).toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Add items'));
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Add task', exact: true }));
     expect(pinMenu).not.toHaveAttribute('open');
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions for link Outside click link' }));
     const actionMenu = document.querySelector('.note-wall-link-actions-menu');
     expect(actionMenu).toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Add items'));
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Add note', exact: true }));
     expect(actionMenu).not.toHaveAttribute('open');
   });
@@ -638,10 +661,12 @@ describe('NoteWall', () => {
     render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: 'Research' })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByText('Add items'));
     fireEvent.click(screen.getAllByRole('button', { name: 'New folder', exact: true })[0]);
     fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Ideas' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create folder' }));
 
+    fireEvent.click(screen.getByText('Add items'));
     fireEvent.click(screen.getAllByRole('button', { name: 'Add note', exact: true })[0]);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Project thought' } });
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Keep this on the research board.' } });
@@ -651,6 +676,7 @@ describe('NoteWall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
     expect(await screen.findByText('Project thought', { selector: 'strong' })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByText('Add items'));
     fireEvent.click(screen.getByRole('button', { name: 'Add task', exact: true }));
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Review research' } });
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'high' } });

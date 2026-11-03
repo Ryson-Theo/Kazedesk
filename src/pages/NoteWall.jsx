@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, CheckCircle2, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Moon, Pencil, Pin, Plus, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Moon, Pencil, Pin, Plus, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
 import MarkdownContent from '../components/MarkdownContent';
 import { storageManager } from '../utils/localStorage';
 import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
@@ -1623,186 +1623,243 @@ export default function NoteWall({ boardId = null }) {
     localStorage.setItem('kazedesk-landing-theme', nextTheme);
   };
 
+  const closeToolbarMenu = (event) => {
+    event.currentTarget.closest('details')?.removeAttribute('open');
+  };
+
+  const positionConnectionPanel = useCallback(() => {
+    const details = connectionPanelRef.current;
+    const panel = details?.querySelector('.note-wall-connection-panel');
+    const summary = details?.querySelector('summary');
+    if (!details?.open || !panel || !summary) return;
+
+    const viewportPadding = 16;
+    const panelWidth = Math.min(760, window.innerWidth - viewportPadding * 2);
+    const panelHeight = Math.min(panel.scrollHeight, window.innerHeight - viewportPadding * 2);
+    const summaryBounds = summary.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(viewportPadding, summaryBounds.left),
+      window.innerWidth - panelWidth - viewportPadding,
+    );
+    const top = Math.max(
+      viewportPadding,
+      Math.min(summaryBounds.bottom + 8, window.innerHeight - panelHeight - viewportPadding),
+    );
+
+    Object.assign(panel.style, {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${panelWidth}px`,
+      maxHeight: `${window.innerHeight - top - viewportPadding}px`,
+    });
+  }, []);
+
+  const saveStatusLabel = wallSaveStatus === 'Changes save automatically in this browser'
+    ? 'Changes saved locally'
+    : wallSaveStatus;
+
+  useEffect(() => {
+    window.addEventListener('resize', positionConnectionPanel);
+    return () => window.removeEventListener('resize', positionConnectionPanel);
+  }, [positionConnectionPanel]);
+
   return (
     <main className={`note-wall-page landing-theme-${theme}${isPrinting ? ' is-printing' : ''}`}>
       <header className="note-wall-toolbar">
         <div className="note-wall-heading">
-          <Link to={boardId ? '/wall/boards' : '/dashboard'} aria-label={boardId ? 'Back to boards' : 'Back to dashboard'}><ArrowLeft size={18} /> {boardId ? 'Boards' : 'Dashboard'}</Link>
-          <div><h1>{boardId ? boardName : 'Sticky note wall'}</h1><span>{notes.length} notes · {tasks.length} tasks · {wall.attachments?.length || 0} attachments · {wall.webClips?.length || 0} web clips · changes save in this browser</span></div>
+          <Link to={boardId ? '/wall/boards' : '/dashboard'} aria-label={boardId ? 'Back to boards' : 'Back to dashboard'} title={boardId ? 'Back to boards' : 'Back to dashboard'}><ArrowLeft size={17} /></Link>
+          <div className="note-wall-heading-copy">
+            <h1>{boardId ? boardName : 'Sticky note wall'}</h1>
+            <div className="note-wall-heading-meta" aria-label="Board contents">
+              <span title={`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`} aria-label={`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`}><StickyNote size={12} />{notes.length}</span>
+              <span title={`${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`} aria-label={`${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`}><CheckCircle2 size={12} />{tasks.length}</span>
+              <span title={`${wall.attachments?.length || 0} ${wall.attachments?.length === 1 ? 'attachment' : 'attachments'}`} aria-label={`${wall.attachments?.length || 0} ${wall.attachments?.length === 1 ? 'attachment' : 'attachments'}`}><FilePlus2 size={12} />{wall.attachments?.length || 0}</span>
+              <span title={`${wall.webClips?.length || 0} ${wall.webClips?.length === 1 ? 'link' : 'links'}`} aria-label={`${wall.webClips?.length || 0} ${wall.webClips?.length === 1 ? 'link' : 'links'}`}><Link2 size={12} />{wall.webClips?.length || 0}</span>
+              <span
+                className={`note-wall-save-indicator${wallSaveStatus.startsWith('Could not') ? ' is-error' : ''}`}
+                role="status"
+                aria-live="polite"
+                aria-label={saveStatusLabel}
+                title={`${wallSaveStatus}${driveStatus ? ` · ${driveStatus}` : GOOGLE_DRIVE_CLIENT_ID ? ' · Private Drive save available' : ' · Drive setup optional'} · Attachment files stay in this browser and are not included in exports.`}
+                data-tooltip={saveStatusLabel}
+              >
+                {wallSaveStatus.startsWith('Could not')
+                  ? <><X size={14} /><span className="note-wall-visually-hidden">{wallSaveStatus}</span></>
+                  : <><CheckCircle2 size={14} /><span className="note-wall-visually-hidden">{saveStatusLabel}</span></>}
+              </span>
+            </div>
+          </div>
         </div>
+        <section className="note-wall-controls" aria-label="Wall controls">
+          <div className="note-wall-toolbar-main">
+            <input
+              ref={attachmentInputRef}
+              className="note-wall-file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf,audio/*"
+              aria-label="Choose image, PDF, or audio attachment"
+              onChange={handleAttachmentSelection}
+            />
+            <details className="note-wall-toolbar-menu note-wall-add-menu">
+              <summary><Plus size={15} /> Add items <ChevronDown size={13} /></summary>
+              <div className="note-wall-toolbar-menu-panel">
+                {boardId && <>
+                  <button type="button" onClick={(event) => { closeToolbarMenu(event); openBoardNoteEditor(); }}><StickyNote size={15} /> Add note</button>
+                  <button type="button" onClick={(event) => { closeToolbarMenu(event); setShowBoardTaskDialog(true); }}><CheckCircle2 size={15} /> Add task</button>
+                  <button type="button" onClick={(event) => { closeToolbarMenu(event); setBoardFolderError(''); setShowBoardFolderDialog(true); }}><Plus size={15} /> New folder</button>
+                </>}
+                <button type="button" disabled={isAddingAttachment} title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`} onClick={(event) => { closeToolbarMenu(event); attachmentInputRef.current?.click(); }}>
+                  <FilePlus2 size={15} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
+                </button>
+                <button type="button" onClick={(event) => { closeToolbarMenu(event); setWebClipError(''); setShowAddLinkDialog(true); }}>
+                  <Link2 size={15} /> Add link
+                </button>
+                <button type="button" title="Set up the browser bookmarklet to clip pages with their metadata" onClick={(event) => { closeToolbarMenu(event); setShowWebClipperSetup(true); }}>
+                  <Globe2 size={15} /> Web clipper
+                </button>
+              </div>
+            </details>
+            <span className="note-wall-attachment-status" role="status" aria-live="polite">
+              {webClipStatus || attachmentStatus}
+            </span>
+            <label className="note-wall-group-filter">Group
+              <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
+                <option value="all">All items</option>
+                <optgroup label="Folders">
+                  {categories.map((category) => <option key={category} value={`folder:${category}`}>{category}</option>)}
+                </optgroup>
+                <optgroup label="Tags">
+                  {tags.map((tag) => <option key={tag} value={`tag:${tag}`}>#{tag}</option>)}
+                </optgroup>
+              </select>
+            </label>
+            <button type="button" className="note-wall-primary-action" aria-label="Tidy & center" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length} title="Arrange and center notes, attachments, web clips, and tasks">
+              <AlignCenter size={16} /> Tidy
+            </button>
+            <button
+              type="button"
+              className={`note-wall-tool-toggle${hideOrphanTasks ? ' is-active' : ''}`}
+              aria-pressed={hideOrphanTasks}
+              onClick={() => setHideOrphanTasks((hidden) => !hidden)}
+              title="Hide tasks in Inbox or without a custom folder"
+            >
+              {hideOrphanTasks ? <EyeOff size={15} /> : <Eye size={15} />}
+              <span>{hideOrphanTasks ? 'Show orphan tasks' : 'Hide orphan tasks'}</span>
+            </button>
+            <div className="note-wall-undo-redo" role="toolbar" aria-label="Edit history">
+              <button type="button" aria-label="Undo" title="Undo wall change" disabled={!canUndo} onClick={undoWallChange}>
+                <Undo2 size={15} /> Undo
+              </button>
+              <button type="button" aria-label="Redo" title="Redo wall change" disabled={!canRedo} onClick={redoWallChange}>
+                <Redo2 size={15} /> Redo
+              </button>
+            </div>
+            {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
+              <button type="button" className={panMode ? 'is-active' : ''} aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
+                <Hand size={15} /><span>Move</span>
+              </button>
+              <span className="note-wall-toolbar-divider" />
+              <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAt(zoom / 1.15, boardRef.current.clientWidth / 2 + boardRef.current.getBoundingClientRect().left, boardRef.current.clientHeight / 2 + boardRef.current.getBoundingClientRect().top)}>
+                <ZoomOut size={15} />
+              </button>
+              <button type="button" className="note-wall-zoom-level" title="Reset zoom" onClick={() => zoomAt(1, boardRef.current.getBoundingClientRect().left + boardRef.current.clientWidth / 2, boardRef.current.getBoundingClientRect().top + boardRef.current.clientHeight / 2)}>{Math.round(zoom * 100)}%</button>
+              <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAt(zoom * 1.15, boardRef.current.clientWidth / 2 + boardRef.current.getBoundingClientRect().left, boardRef.current.clientHeight / 2 + boardRef.current.getBoundingClientRect().top)}>
+                <ZoomIn size={15} />
+              </button>
+            </div>}
+            {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
+              <details className="note-wall-connection-tools" ref={connectionPanelRef} onToggle={positionConnectionPanel}>
+                <summary aria-label="Connections"><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}<ChevronDown size={13} /></summary>
+                <div className="note-wall-connection-panel">
+                  <div className="note-wall-connection-panel-heading">
+                    <strong>Create a new connection</strong>
+                    <span>Link notes and related items. Folder links are solid, shared tags dotted, and task links dashed.</span>
+                  </div>
+                  <form className="note-wall-link-form" onSubmit={addConnection}>
+                    <select aria-label="Connection start note" value={connectionFrom} onChange={(event) => setConnectionFrom(event.target.value)}>
+                      <option value="">From note…</option>
+                      {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
+                    </select>
+                    <select aria-label="Connection end note" value={connectionTo} onChange={(event) => setConnectionTo(event.target.value)}>
+                      <option value="">To note…</option>
+                      {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
+                    </select>
+                    <label className="note-wall-color-control">Line color
+                      <input aria-label="Connection color" type="color" value={connectionColor} onChange={(event) => setConnectionColor(event.target.value)} />
+                    </label>
+                    <select aria-label="Connection style" value={connectionStyle} onChange={(event) => setConnectionStyle(event.target.value)}>
+                      <option value="solid">Solid line</option>
+                      <option value="dotted">Dotted line</option>
+                      <option value="dashed">Dashed line</option>
+                    </select>
+                    <label className="note-wall-inline-option">
+                      <input type="checkbox" checked={connectionCurved} onChange={(event) => setConnectionCurved(event.target.checked)} />
+                      Curved
+                    </label>
+                    <select aria-label="Connection start edge" value={connectionFromAnchor} onChange={(event) => setConnectionFromAnchor(event.target.value)}>
+                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
+                    </select>
+                    <select aria-label="Connection end edge" value={connectionToAnchor} onChange={(event) => setConnectionToAnchor(event.target.value)}>
+                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
+                    </select>
+                    <button type="submit" className="note-wall-secondary-action" disabled={visibleNotes.length < 2}><Link2 size={14} /> Add connection</button>
+                    <button type="button" className="note-wall-auto-connect" onClick={autoConnectRelated} disabled={!visibleNotes.length || (!visibleTasks.length && visibleNotes.length < 2)} title="Folder links are solid, shared-tag links are dotted, and task-to-note links are dashed. Existing links are kept.">
+                      Auto-connect related
+                    </button>
+                  </form>
+                  {selectedCardId !== null && (
+                    <label className="note-wall-selection-control">Card color
+                      <input aria-label="Selected card color" type="color" value={selectedCard?.color?.startsWith('#') ? selectedCard.color : NOTE_COLORS[selectedCard?.color] || '#fef08a'} onChange={(event) => updateSelectedCardColor(event.target.value)} />
+                    </label>
+                  )}
+                  {selectedConnection && (
+                    <div className="note-wall-selection-control note-wall-selected-line" role="group" aria-label="Selected connection settings">
+                      <strong>Selected line</strong>
+                      <input aria-label="Selected line color" type="color" value={selectedConnection.color || '#a5b4fc'} onChange={(event) => updateSelectedConnection({ color: event.target.value })} />
+                      <select aria-label="Selected line style" value={selectedConnection.style || 'solid'} onChange={(event) => updateSelectedConnection({ style: event.target.value })}>
+                        <option value="solid">Solid</option>
+                        <option value="dotted">Dotted</option>
+                        <option value="dashed">Dashed</option>
+                      </select>
+                      <label className="note-wall-inline-option">
+                        <input aria-label="Selected line curved" type="checkbox" checked={selectedConnection.curved !== false} onChange={(event) => updateSelectedConnection({ curved: event.target.checked })} />
+                        Curved
+                      </label>
+                      <select aria-label="Selected line start edge" value={selectedConnection.fromAnchor || 'right'} onChange={(event) => updateSelectedConnection({ fromAnchor: event.target.value })}>
+                        {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
+                      </select>
+                      <select aria-label="Selected line end edge" value={selectedConnection.toAnchor || 'left'} onChange={(event) => updateSelectedConnection({ toAnchor: event.target.value })}>
+                        {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
+                      </select>
+                      <button type="button" onClick={() => setSelectedConnectionId(null)} aria-label="Deselect line">Done</button>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
+        </section>
         <div className="note-wall-export-actions">
           <button type="button" className="note-wall-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button type="button" onClick={() => exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls, visibleWebClips).catch((error) => setDriveStatus(error.message))}><Download size={15} /> PNG</button>
-          <button type="button" onClick={() => {
-            setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
-            setIsPrinting(true);
-          }}><Printer size={15} /> PDF</button>
-          <button type="button" onClick={() => exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [], tasks)}><FileText size={15} /> Markdown</button>
-          <button type="button" onClick={() => exportWallJSON(notes, categories, wall, tasks, boardId ? boardName : '')}><FileJson2 size={15} /> JSON</button>
-          <button type="button" onClick={saveToDrive}><Save size={15} /> Save to Drive</button>
+          <details className="note-wall-toolbar-menu note-wall-export-menu">
+            <summary aria-label="Export and backup"><Download size={15} /> Export <ChevronDown size={13} /></summary>
+            <div className="note-wall-toolbar-menu-panel">
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls, visibleWebClips).catch((error) => setDriveStatus(error.message)); }}><Download size={15} /> Export PNG</button>
+              <button type="button" onClick={(event) => {
+                closeToolbarMenu(event);
+                setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
+                setIsPrinting(true);
+              }}><Printer size={15} /> Print / PDF</button>
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [], tasks); }}><FileText size={15} /> Export Markdown</button>
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallJSON(notes, categories, wall, tasks, boardId ? boardName : ''); }}><FileJson2 size={15} /> Export JSON</button>
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); saveToDrive(); }}><Save size={15} /> Save to Drive</button>
+            </div>
+          </details>
         </div>
       </header>
-
-      <section className="note-wall-controls" aria-label="Wall controls">
-        <div className="note-wall-toolbar-main">
-          {!boardId && <Link to="/wall/boards" className="note-wall-secondary-action note-wall-boards-link"><Plus size={15} /> My boards</Link>}
-          {boardId && (
-            <>
-              <Link to="/wall/boards" className="note-wall-secondary-action note-wall-boards-link"><ArrowLeft size={15} /> My boards</Link>
-              <button type="button" className="note-wall-primary-action" onClick={() => openBoardNoteEditor()}><Plus size={16} /> Add note</button>
-              <button type="button" className="note-wall-secondary-action" onClick={() => setShowBoardTaskDialog(true)}><Plus size={16} /> Add task</button>
-              <button type="button" className="note-wall-secondary-action" onClick={() => { setBoardFolderError(''); setShowBoardFolderDialog(true); }}><Plus size={16} /> New folder</button>
-            </>
-          )}
-          <input
-            ref={attachmentInputRef}
-            className="note-wall-file-input"
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf,audio/*"
-            aria-label="Choose image, PDF, or audio attachment"
-            onChange={handleAttachmentSelection}
-          />
-          <button
-            type="button"
-            className="note-wall-primary-action"
-            onClick={() => attachmentInputRef.current?.click()}
-            disabled={isAddingAttachment}
-            title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`}
-          >
-            <FilePlus2 size={16} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
-          </button>
-          <button type="button" className="note-wall-secondary-action" onClick={() => { setWebClipError(''); setShowAddLinkDialog(true); }}>
-            <Link2 size={16} /> Add link
-          </button>
-          <button type="button" className="note-wall-secondary-action" onClick={() => setShowWebClipperSetup(true)} title="Set up the browser bookmarklet to clip pages with their metadata">
-            <Globe2 size={16} /> Web clipper
-          </button>
-          <span className="note-wall-attachment-status" role="status" aria-live="polite">
-            {webClipStatus || attachmentStatus || `Images, PDFs, and audio · up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB`}
-          </span>
-          <label className="note-wall-group-filter">Group
-            <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
-              <option value="all">All items</option>
-              <optgroup label="Folders">
-                {categories.map((category) => <option key={category} value={`folder:${category}`}>{category}</option>)}
-              </optgroup>
-              <optgroup label="Tags">
-                {tags.map((tag) => <option key={tag} value={`tag:${tag}`}>#{tag}</option>)}
-              </optgroup>
-            </select>
-          </label>
-          <div className="note-wall-toolbar-divider" />
-          <button type="button" className="note-wall-primary-action" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length} title="Arrange and center notes, attachments, web clips, and tasks">
-            <AlignCenter size={16} /> Tidy &amp; center
-          </button>
-          <button
-            type="button"
-            className={`note-wall-tool-toggle${hideOrphanTasks ? ' is-active' : ''}`}
-            aria-pressed={hideOrphanTasks}
-            onClick={() => setHideOrphanTasks((hidden) => !hidden)}
-            title="Hide tasks in Inbox or without a custom folder"
-          >
-            {hideOrphanTasks ? <EyeOff size={15} /> : <Eye size={15} />}
-            {hideOrphanTasks ? 'Show orphan tasks' : 'Hide orphan tasks'}
-          </button>
-          <div className="note-wall-undo-redo" role="toolbar" aria-label="Edit history">
-            <button type="button" aria-label="Undo" title="Undo wall change" disabled={!canUndo} onClick={undoWallChange}>
-              <Undo2 size={15} /> Undo
-            </button>
-            <button type="button" aria-label="Redo" title="Redo wall change" disabled={!canRedo} onClick={redoWallChange}>
-              <Redo2 size={15} /> Redo
-            </button>
-          </div>
-          {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
-            <button type="button" className={panMode ? 'is-active' : ''} aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
-              <Hand size={15} /> Move
-            </button>
-            <span className="note-wall-toolbar-divider" />
-            <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAt(zoom / 1.15, boardRef.current.clientWidth / 2 + boardRef.current.getBoundingClientRect().left, boardRef.current.clientHeight / 2 + boardRef.current.getBoundingClientRect().top)}>
-              <ZoomOut size={15} />
-            </button>
-            <button type="button" className="note-wall-zoom-level" title="Reset zoom" onClick={() => zoomAt(1, boardRef.current.getBoundingClientRect().left + boardRef.current.clientWidth / 2, boardRef.current.getBoundingClientRect().top + boardRef.current.clientHeight / 2)}>{Math.round(zoom * 100)}%</button>
-            <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAt(zoom * 1.15, boardRef.current.clientWidth / 2 + boardRef.current.getBoundingClientRect().left, boardRef.current.clientHeight / 2 + boardRef.current.getBoundingClientRect().top)}>
-              <ZoomIn size={15} />
-            </button>
-          </div>}
-          {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
-            <details className="note-wall-connection-tools" ref={connectionPanelRef}>
-              <summary><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}</summary>
-              <div className="note-wall-connection-panel">
-                <div className="note-wall-connection-panel-heading">
-                  <strong>Connect notes, attachments, web clips, and tasks</strong>
-                  <span>Same-folder notes use solid lines, shared tags use dotted lines, and task-folder links use dashed lines.</span>
-                </div>
-                <form className="note-wall-link-form" onSubmit={addConnection}>
-                  <select aria-label="Connection start note" value={connectionFrom} onChange={(event) => setConnectionFrom(event.target.value)}>
-                    <option value="">From note…</option>
-                    {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
-                  </select>
-                  <select aria-label="Connection end note" value={connectionTo} onChange={(event) => setConnectionTo(event.target.value)}>
-                    <option value="">To note…</option>
-                    {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
-                  </select>
-                  <label className="note-wall-color-control">Line color
-                    <input aria-label="Connection color" type="color" value={connectionColor} onChange={(event) => setConnectionColor(event.target.value)} />
-                  </label>
-                  <select aria-label="Connection style" value={connectionStyle} onChange={(event) => setConnectionStyle(event.target.value)}>
-                    <option value="solid">Solid line</option>
-                    <option value="dotted">Dotted line</option>
-                    <option value="dashed">Dashed line</option>
-                  </select>
-                  <label className="note-wall-inline-option">
-                    <input type="checkbox" checked={connectionCurved} onChange={(event) => setConnectionCurved(event.target.checked)} />
-                    Curved
-                  </label>
-                  <select aria-label="Connection start edge" value={connectionFromAnchor} onChange={(event) => setConnectionFromAnchor(event.target.value)}>
-                    {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
-                  </select>
-                  <select aria-label="Connection end edge" value={connectionToAnchor} onChange={(event) => setConnectionToAnchor(event.target.value)}>
-                    {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
-                  </select>
-                  <button type="submit" className="note-wall-secondary-action" disabled={visibleNotes.length < 2}><Link2 size={14} /> Add connection</button>
-                  <button type="button" className="note-wall-auto-connect" onClick={autoConnectRelated} disabled={!visibleNotes.length || (!visibleTasks.length && visibleNotes.length < 2)} title="Folder links are solid, shared-tag links are dotted, and task-to-note links are dashed. Existing links are kept.">
-                    Auto-connect related
-                  </button>
-                </form>
-                {selectedCardId !== null && (
-                  <label className="note-wall-selection-control">Card color
-                    <input aria-label="Selected card color" type="color" value={selectedCard?.color?.startsWith('#') ? selectedCard.color : NOTE_COLORS[selectedCard?.color] || '#fef08a'} onChange={(event) => updateSelectedCardColor(event.target.value)} />
-                  </label>
-                )}
-                {selectedConnection && (
-                  <div className="note-wall-selection-control note-wall-selected-line" role="group" aria-label="Selected connection settings">
-                    <strong>Selected line</strong>
-                    <input aria-label="Selected line color" type="color" value={selectedConnection.color || '#a5b4fc'} onChange={(event) => updateSelectedConnection({ color: event.target.value })} />
-                    <select aria-label="Selected line style" value={selectedConnection.style || 'solid'} onChange={(event) => updateSelectedConnection({ style: event.target.value })}>
-                      <option value="solid">Solid</option>
-                      <option value="dotted">Dotted</option>
-                      <option value="dashed">Dashed</option>
-                    </select>
-                    <label className="note-wall-inline-option">
-                      <input aria-label="Selected line curved" type="checkbox" checked={selectedConnection.curved !== false} onChange={(event) => updateSelectedConnection({ curved: event.target.checked })} />
-                      Curved
-                    </label>
-                    <select aria-label="Selected line start edge" value={selectedConnection.fromAnchor || 'right'} onChange={(event) => updateSelectedConnection({ fromAnchor: event.target.value })}>
-                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
-                    </select>
-                    <select aria-label="Selected line end edge" value={selectedConnection.toAnchor || 'left'} onChange={(event) => updateSelectedConnection({ toAnchor: event.target.value })}>
-                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
-                    </select>
-                    <button type="button" onClick={() => setSelectedConnectionId(null)} aria-label="Deselect line">Done</button>
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
-        </div>
-        <span className={`note-wall-drive-help${wallSaveStatus.startsWith('Could not') ? ' is-error' : ' is-saved'}`} role="status" aria-live="polite">
-          {wallSaveStatus}{driveStatus ? ` · ${driveStatus}` : GOOGLE_DRIVE_CLIENT_ID ? ' · Private Drive save available' : ' · Drive setup optional'} · Attachment files stay in this browser and are not included in exports.
-        </span>
-      </section>
 
       {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 ? (
         <div className="note-wall-empty">
