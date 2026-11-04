@@ -142,6 +142,155 @@ describe('NoteWall', () => {
     }
   });
 
+  it('records a voice note and adds playable audio to the wall', async () => {
+    noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
+    noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['voice note'], { type: 'audio/webm' }));
+    const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
+    const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const stream = { getTracks: () => [{ stop: vi.fn() }] };
+    class FakeAudioContext {
+      state = 'running';
+
+      resume = vi.fn().mockResolvedValue(undefined);
+
+      close = vi.fn().mockImplementation(() => {
+        this.state = 'closed';
+        return Promise.resolve();
+      });
+
+      createAnalyser() {
+        return {
+          fftSize: 32,
+          getFloatTimeDomainData(samples) {
+            samples.fill(0.0625);
+          },
+        };
+      }
+
+      createMediaStreamSource() {
+        return { connect: vi.fn() };
+      }
+    }
+    Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:voice-note') });
+    class FakeMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
+
+      constructor(_stream, options) {
+        this.mimeType = options?.mimeType || 'audio/webm';
+        this.state = 'inactive';
+      }
+
+      start() {
+        this.state = 'recording';
+      }
+
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['voice note'], { type: 'audio/webm' }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      fireEvent.click(screen.getByText('Add items'));
+      fireEvent.click(screen.getByRole('button', { name: 'Record voice note' }));
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true }));
+      const recordingDialog = screen.getByRole('dialog', { name: 'Recording your voice note' });
+      expect(recordingDialog.querySelectorAll('.note-wall-voice-live-wave span')).toHaveLength(32);
+      await waitFor(() => expect(Number.parseInt(recordingDialog.querySelector('.note-wall-voice-live-wave span:last-child').style.height, 10)).toBe(25));
+      expect(document.querySelector('.note-wall-add-menu')).not.toContainElement(screen.getByRole('button', { name: 'Stop recording' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Stop recording' }));
+
+      expect(await screen.findByRole('dialog', { name: 'Listen before saving' })).toBeInTheDocument();
+      expect(noteWallMedia.saveWallAttachment).not.toHaveBeenCalled();
+      expect(storageManager.getNoteWall().attachments).toHaveLength(0);
+      expect(await screen.findByRole('button', { name: 'Delete recording' })).toBeInTheDocument();
+      const previewPlayer = document.querySelector('.note-wall-voice-dialog .note-wall-audio-player');
+      expect(previewPlayer).toHaveTextContent('0:00 / 0:01');
+      fireEvent.click(screen.getByRole('button', { name: 'Add to board' }));
+      await waitFor(() => expect(storageManager.getNoteWall().attachments).toHaveLength(1));
+      expect(noteWallMedia.saveWallAttachment).toHaveBeenCalledOnce();
+      const [id, file] = noteWallMedia.saveWallAttachment.mock.calls[0];
+      expect(file).toMatchObject({ type: 'audio/webm', name: expect.stringMatching(/^voice-note-.*\.webm$/) });
+      expect(storageManager.getNoteWall().attachments).toContainEqual(expect.objectContaining({
+        id,
+        name: file.name,
+        mimeType: 'audio/webm',
+        mediaType: 'audio',
+        duration: 1,
+        waveform: Array(32).fill(25),
+      }));
+      expect(await screen.findByRole('button', { name: `Play ${file.name}` })).toBeInTheDocument();
+      expect(screen.getByLabelText(`Seek ${file.name}`)).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
+      else delete navigator.mediaDevices;
+      if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
+      else delete window.AudioContext;
+      if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL);
+      else delete URL.createObjectURL;
+    }
+  });
+
+  it('discards a stopped voice-note preview without saving it to the board', async () => {
+    noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
+    const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
+    });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:discarded-voice') });
+    class FakeMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
+
+      constructor() {
+        this.mimeType = 'audio/webm';
+        this.state = 'inactive';
+      }
+
+      start() {
+        this.state = 'recording';
+      }
+
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['discard me'], { type: 'audio/webm' }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      fireEvent.click(screen.getByText('Add items'));
+      fireEvent.click(screen.getByRole('button', { name: 'Record voice note' }));
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+      fireEvent.click(await screen.findByRole('button', { name: 'Stop recording' }));
+      expect(await screen.findByRole('dialog', { name: 'Listen before saving' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Delete recording' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Listen before saving' })).not.toBeInTheDocument());
+      expect(noteWallMedia.saveWallAttachment).not.toHaveBeenCalled();
+      expect(storageManager.getNoteWall().attachments).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalMediaDevices) Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
+      else delete navigator.mediaDevices;
+      if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL);
+      else delete URL.createObjectURL;
+    }
+  });
+
   it('reports unsupported attachment files without storing them', async () => {
     noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
     render(<MemoryRouter><NoteWall /></MemoryRouter>);
@@ -161,7 +310,7 @@ describe('NoteWall', () => {
     ];
     storageManager.saveNoteWall({
       positions: { 'pdf-1': { x: 30, y: 30 }, 'audio-1': { x: 360, y: 30 } },
-      sizes: {},
+      sizes: { 'audio-1': { width: 300, height: 250 } },
       taskPositions: {},
       connections: [],
       attachments,
@@ -175,8 +324,65 @@ describe('NoteWall', () => {
     try {
       render(<MemoryRouter><NoteWall /></MemoryRouter>);
       expect(await screen.findByTitle('PDF preview: guide.pdf')).toHaveAttribute('src', 'blob:attachment-0');
-      expect(await screen.findByLabelText('Play clip.mp3')).toHaveAttribute('controls');
-      expect(document.querySelector('[data-node-type="attachment"][data-node-id="audio-1"]')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Play clip.mp3' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Seek clip.mp3')).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'clip.mp3 audio player' })).toBeInTheDocument();
+      expect(document.querySelectorAll('[data-node-type="attachment"][data-node-id="audio-1"] .note-wall-audio-wave > span')).toHaveLength(32);
+      expect(document.querySelector('[data-node-type="attachment"][data-node-id="audio-1"]')).toHaveStyle({ width: '360px', height: '108px' });
+      expect(storageManager.getNoteWall().sizes['audio-1']).toEqual({ width: 360, height: 108 });
+    } finally {
+      if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
+      else delete URL.createObjectURL;
+    }
+  });
+
+  it('lets audio players pause, seek through the waveform, and change playback speed', async () => {
+    storageManager.saveNoteWall({
+      positions: { 'audio-controls': { x: 30, y: 30 } },
+      sizes: {},
+      taskPositions: {},
+      connections: [],
+      attachments: [{ id: 'audio-controls', name: 'voice.webm', mimeType: 'audio/webm', mediaType: 'audio', size: 12, category: 'Inbox' }],
+    });
+    noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['voice']));
+    const createObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:voice-controls') });
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+      const playButton = await screen.findByRole('button', { name: 'Play voice.webm' });
+      const audio = document.querySelector('.note-wall-audio-element');
+      Object.defineProperties(audio, {
+        duration: { configurable: true, value: 45 },
+        currentTime: { configurable: true, writable: true, value: 0 },
+        paused: { configurable: true, writable: true, value: true },
+      });
+      audio.play = vi.fn(async () => {
+        audio.paused = false;
+        fireEvent.play(audio);
+      });
+      audio.pause = vi.fn(() => {
+        audio.paused = true;
+        fireEvent.pause(audio);
+      });
+      fireEvent.loadedMetadata(audio);
+      const player = screen.getByRole('group', { name: 'voice.webm audio player' });
+      await waitFor(() => expect(player).toHaveTextContent('0:00 / 0:45'));
+
+      fireEvent.click(playButton);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Pause voice.webm' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Pause voice.webm' }));
+      expect(audio.pause).toHaveBeenCalledOnce();
+
+      const seekSlider = screen.getByLabelText('Seek voice.webm');
+      fireEvent.change(seekSlider, { target: { value: '12' } });
+      expect(audio.currentTime).toBe(12);
+      fireEvent.timeUpdate(audio);
+      expect(player).toHaveTextContent('0:12 / 0:45');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Playback speed (1×)' }));
+      expect(screen.getByRole('button', { name: 'Playback speed (1.25×)' })).toBeInTheDocument();
+      expect(audio.playbackRate).toBe(1.25);
     } finally {
       if (createObjectURL) Object.defineProperty(URL, 'createObjectURL', createObjectURL);
       else delete URL.createObjectURL;

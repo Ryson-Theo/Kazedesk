@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Moon, Pencil, Pin, Plus, Printer, Redo2, Save, Send, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Mic, Moon, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
 import MarkdownContent from '../components/MarkdownContent';
 import { storageManager } from '../utils/localStorage';
 import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
@@ -30,8 +30,133 @@ const ANCHOR_DIRECTIONS = {
   left: { x: -1, y: 0 },
 };
 const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
+const DEFAULT_AUDIO_SIZE = { width: 360, height: 108 };
 const DEFAULT_WEB_CLIP_SIZE = { width: 320, height: 260 };
 const DEFAULT_BOARD_TASK_CATEGORIES = ['Inbox'];
+
+function formatAudioTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function getAudioWaveform(waveform) {
+  if (Array.isArray(waveform) && waveform.length) {
+    return waveform.slice(0, 32).map((peak) => Math.max(12, Math.min(100, Number(peak) || 12)));
+  }
+  return Array(32).fill(12);
+}
+
+function compressAudioWaveform(samples) {
+  if (!samples.length) return [];
+  return Array.from({ length: 32 }, (_, index) => {
+    const start = Math.floor(index * samples.length / 32);
+    const end = Math.max(start + 1, Math.floor((index + 1) * samples.length / 32));
+    const peak = samples.slice(start, end).reduce((value, sample) => Math.max(value, sample), 0);
+    return Math.max(12, Math.min(100, Math.round(peak / 0.25 * 100)));
+  });
+}
+
+function WallAudioPlayer({ attachment, url, initialDuration = attachment.duration || 0 }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(initialDuration);
+  const [speedIndex, setSpeedIndex] = useState(0);
+  const [playbackError, setPlaybackError] = useState('');
+  const speeds = [1, 1.25, 1.5, 2];
+  const waveform = useMemo(() => getAudioWaveform(attachment.waveform), [attachment.waveform]);
+  const progress = duration ? Math.min(currentTime / duration, 1) : 0;
+
+  const togglePlayback = async (event) => {
+    event.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      try {
+        await audio.play();
+        setPlaybackError('');
+      } catch {
+        setPlaybackError('Playback could not start. Try again.');
+      }
+    } else {
+      audio.pause();
+    }
+  };
+
+  const changeSpeed = (event) => {
+    event.stopPropagation();
+    const nextIndex = (speedIndex + 1) % speeds.length;
+    setSpeedIndex(nextIndex);
+    if (audioRef.current) audioRef.current.playbackRate = speeds[nextIndex];
+  };
+
+  const seek = (event) => {
+    event.stopPropagation();
+    if (audioRef.current && duration) audioRef.current.currentTime = Number(event.target.value);
+  };
+
+  return (
+    <div className="note-wall-audio-player" role="group" aria-label={`${attachment.name} audio player`} onPointerDown={(event) => event.stopPropagation()}>
+      <audio
+        ref={audioRef}
+        className="note-wall-audio-element"
+        src={url}
+        preload="metadata"
+        aria-hidden="true"
+        tabIndex={-1}
+        onLoadedMetadata={(event) => {
+          if (Number.isFinite(event.currentTarget.duration) && event.currentTarget.duration > 0) setDuration(event.currentTarget.duration);
+        }}
+        onDurationChange={(event) => {
+          if (Number.isFinite(event.currentTarget.duration) && event.currentTarget.duration > 0) setDuration(event.currentTarget.duration);
+        }}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => { setIsPlaying(false); setCurrentTime(0); }}
+      />
+      <button
+        type="button"
+        className="note-wall-audio-play"
+        aria-label={`${isPlaying ? 'Pause' : 'Play'} ${attachment.name}`}
+        title={isPlaying ? 'Pause' : 'Play'}
+        onClick={togglePlayback}
+      >
+        {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+      </button>
+      <div className={`note-wall-audio-wave${isPlaying ? ' is-playing' : ''}`} aria-hidden="true">
+        {waveform.map((height, index) => (
+          <span key={index} className={index / waveform.length < progress ? 'is-played' : ''} style={{ height: `${height}%`, '--wave-index': index }} />
+        ))}
+        <input
+          type="range"
+          className="note-wall-audio-seek"
+          min="0"
+          max={duration || 0}
+          step="0.1"
+          value={Math.min(currentTime, duration)}
+          disabled={!duration}
+          aria-label={`Seek ${attachment.name}`}
+          aria-valuetext={`${formatAudioTime(currentTime)} of ${formatAudioTime(duration)}`}
+          onChange={seek}
+        />
+      </div>
+      <span className="note-wall-audio-time">
+        {formatAudioTime(currentTime)}<span aria-hidden="true"> / </span>{formatAudioTime(duration)}
+      </span>
+      <button
+        type="button"
+        className="note-wall-audio-speed"
+        aria-label={`Playback speed (${speeds[speedIndex]}×)`}
+        title="Change playback speed"
+        onClick={changeSpeed}
+      >{speeds[speedIndex]}×</button>
+      {playbackError && <span className="note-wall-audio-error" role="alert">{playbackError}</span>}
+    </div>
+  );
+}
 
 function getCompactWebClipSize(clip) {
   const labelLength = Math.max(clip.title?.length || 0, clip.siteName?.length || 0);
@@ -152,7 +277,7 @@ function getNextAttachmentPosition(wall, notes, tasks, newSize = DEFAULT_ATTACHM
     })),
     ...(wall.attachments || []).map((attachment) => ({
       position: wall.positions[attachment.id] || { x: 30, y: 30 },
-      size: wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE,
+      size: wall.sizes?.[attachment.id] || (attachment.mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : DEFAULT_ATTACHMENT_SIZE),
     })),
     ...(wall.webClips || []).map((clip) => ({
       position: wall.positions[clip.id] || { x: 30, y: 30 },
@@ -384,6 +509,12 @@ export default function NoteWall({ boardId = null }) {
   const [attachmentUrls, setAttachmentUrls] = useState({});
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
+  const [isStartingVoiceNote, setIsStartingVoiceNote] = useState(false);
+  const [isRecordingVoiceNote, setIsRecordingVoiceNote] = useState(false);
+  const [showVoiceNoteDialog, setShowVoiceNoteDialog] = useState(false);
+  const [voiceDraft, setVoiceDraft] = useState(null);
+  const [voiceLiveWaveform, setVoiceLiveWaveform] = useState([]);
+  const [voiceElapsedTime, setVoiceElapsedTime] = useState(0);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printScale, setPrintScale] = useState(1);
   const [theme, setTheme] = useState(() => localStorage.getItem('kazedesk-landing-theme') === 'light' ? 'light' : 'dark');
@@ -395,6 +526,18 @@ export default function NoteWall({ boardId = null }) {
   const [connectionPreview, setConnectionPreview] = useState(null);
   const boardRef = useRef(null);
   const attachmentInputRef = useRef(null);
+  const voiceRecorderRef = useRef(null);
+  const voiceStreamRef = useRef(null);
+  const voiceAudioContextRef = useRef(null);
+  const voiceWaveformTimerRef = useRef(null);
+  const voiceElapsedTimerRef = useRef(null);
+  const voiceWaveformSamplesRef = useRef([]);
+  const voiceRecordingStartedAtRef = useRef(0);
+  const voiceDraftUrlRef = useRef('');
+  const voiceDiscardRef = useRef(false);
+  const voiceChunksRef = useRef([]);
+  const voiceRecordingSizeRef = useRef(0);
+  const voiceRecordingErrorRef = useRef('');
   const connectionPanelRef = useRef(null);
   const gestureRef = useRef(null);
   const nextSaveMessageRef = useRef('');
@@ -457,6 +600,19 @@ export default function NoteWall({ boardId = null }) {
   };
 
   useEffect(() => () => window.clearTimeout(wallHistoryRef.current.timer), []);
+
+  useEffect(() => () => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder?.state === 'recording') {
+      voiceDiscardRef.current = true;
+      recorder.stop();
+    }
+    if (voiceWaveformTimerRef.current !== null) window.clearInterval(voiceWaveformTimerRef.current);
+    if (voiceElapsedTimerRef.current !== null) window.clearInterval(voiceElapsedTimerRef.current);
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (voiceAudioContextRef.current?.state !== 'closed') voiceAudioContextRef.current?.close();
+    if (voiceDraftUrlRef.current) URL.revokeObjectURL(voiceDraftUrlRef.current);
+  }, []);
 
   useEffect(() => {
     pruneWallAttachments(() => [
@@ -606,6 +762,19 @@ export default function NoteWall({ boardId = null }) {
   }, [wall.attachments]);
 
   useEffect(() => {
+    const sizes = { ...wall.sizes };
+    let hasLegacyAudioSize = false;
+    (wall.attachments || []).forEach((attachment) => {
+      const size = sizes[attachment.id];
+      if (attachment.mediaType === 'audio' && size?.width === DEFAULT_ATTACHMENT_SIZE.width && size?.height === DEFAULT_ATTACHMENT_SIZE.height) {
+        sizes[attachment.id] = DEFAULT_AUDIO_SIZE;
+        hasLegacyAudioSize = true;
+      }
+    });
+    if (hasLegacyAudioSize) setWall((current) => ({ ...current, sizes }), false);
+  }, [wall]);
+
+  useEffect(() => {
     const connections = recolorIntersectingConnections(
       wall.connections,
       notes,
@@ -664,7 +833,7 @@ export default function NoteWall({ boardId = null }) {
   const boardSize = [...visibleNotes, ...visibleAttachments, ...visibleWebClips].reduce((size, note) => {
     const position = wall.positions[note.id] || { x: 30, y: 30 };
     const dimensions = wall.sizes?.[note.id]
-      || (note.mediaType ? DEFAULT_ATTACHMENT_SIZE : note.url ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+      || (note.mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : note.mediaType ? DEFAULT_ATTACHMENT_SIZE : note.url ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
     return {
       width: Math.max(size.width, position.x + dimensions.width + 100),
       height: Math.max(size.height, position.y + dimensions.height + 100),
@@ -675,29 +844,241 @@ export default function NoteWall({ boardId = null }) {
     return { width: Math.max(size.width, position.x + 190), height: Math.max(size.height, position.y + 90) };
   }, boardSize);
 
-  const handleAttachmentSelection = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const addAttachmentFile = async (file, metadata = {}) => {
     setIsAddingAttachment(true);
     setAttachmentStatus(`Adding ${file.name}…`);
     try {
       const { mimeType, mediaType } = validateWallAttachment(file);
       const id = crypto.randomUUID();
       await saveWallAttachment(id, file);
-      const attachment = { id, name: file.name, mimeType, mediaType, size: file.size, category: 'Inbox' };
+      const attachment = {
+        id,
+        name: file.name,
+        mimeType,
+        mediaType,
+        size: file.size,
+        category: 'Inbox',
+        ...(mediaType === 'audio' && metadata.duration ? { duration: metadata.duration } : {}),
+        ...(mediaType === 'audio' && metadata.waveform?.length ? { waveform: metadata.waveform } : {}),
+      };
+      const attachmentSize = mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : DEFAULT_ATTACHMENT_SIZE;
       setWall((current) => ({
         ...current,
         attachments: [...(current.attachments || []), attachment],
-        positions: { ...current.positions, [id]: getNextAttachmentPosition(current, notes, tasks) },
-        sizes: { ...current.sizes, [id]: DEFAULT_ATTACHMENT_SIZE },
+        positions: { ...current.positions, [id]: getNextAttachmentPosition(current, notes, tasks, attachmentSize) },
+        sizes: { ...current.sizes, [id]: attachmentSize },
       }));
       setAttachmentStatus(`${file.name} added to the wall.`);
+      return true;
     } catch (error) {
       setAttachmentStatus(error.message || 'Could not add this attachment.');
+      return false;
     } finally {
       setIsAddingAttachment(false);
     }
+  };
+
+  const handleAttachmentSelection = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) await addAttachmentFile(file);
+  };
+
+  const startVoiceNote = async () => {
+    if (isAddingAttachment || isStartingVoiceNote || isRecordingVoiceNote) return;
+    setShowVoiceNoteDialog(true);
+    setVoiceDraft(null);
+    setVoiceLiveWaveform([]);
+    setVoiceElapsedTime(0);
+    setAttachmentStatus('');
+    voiceDiscardRef.current = false;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAttachmentStatus('Voice recording is not supported in this browser.');
+      return;
+    }
+
+    setIsStartingVoiceNote(true);
+    setAttachmentStatus('Waiting for microphone permission…');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (voiceDiscardRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      voiceRecordingSizeRef.current = 0;
+      voiceWaveformSamplesRef.current = [];
+      voiceRecordingErrorRef.current = '';
+      setVoiceLiveWaveform([]);
+      setVoiceElapsedTime(0);
+      const AudioContextConstructor = window.AudioContext;
+      if (AudioContextConstructor) {
+        try {
+          const audioContext = new AudioContextConstructor();
+          voiceAudioContextRef.current = audioContext;
+          await audioContext.resume();
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 2048;
+          audioContext.createMediaStreamSource(stream).connect(analyser);
+          const samples = new Float32Array(analyser.fftSize);
+          const captureWaveformSample = () => {
+            analyser.getFloatTimeDomainData(samples);
+            const amplitude = Math.sqrt(samples.reduce((sum, sample) => sum + sample ** 2, 0) / samples.length);
+            voiceWaveformSamplesRef.current.push(amplitude);
+            const recentSamples = voiceWaveformSamplesRef.current.slice(-32);
+            setVoiceLiveWaveform(recentSamples.map((sample) => Math.max(12, Math.min(100, Math.round(sample / 0.25 * 100)))));
+          };
+          captureWaveformSample();
+          voiceWaveformTimerRef.current = window.setInterval(captureWaveformSample, 50);
+        } catch {
+          if (voiceAudioContextRef.current?.state !== 'closed') await voiceAudioContextRef.current?.close();
+          voiceAudioContextRef.current = null;
+        }
+      }
+      const formats = [
+        { recorderType: 'audio/webm;codecs=opus', mimeType: 'audio/webm', extension: 'webm' },
+        { recorderType: 'audio/ogg;codecs=opus', mimeType: 'audio/ogg', extension: 'ogg' },
+        { recorderType: 'audio/mp4', mimeType: 'audio/mp4', extension: 'm4a' },
+      ];
+      const format = formats.find(({ recorderType }) => MediaRecorder.isTypeSupported?.(recorderType));
+      const recorder = new MediaRecorder(stream, format ? { mimeType: format.recorderType } : undefined);
+      voiceRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (!event.data.size) return;
+        voiceRecordingSizeRef.current += event.data.size;
+        if (voiceRecordingSizeRef.current > MAX_WALL_ATTACHMENT_SIZE) {
+          voiceRecordingErrorRef.current = `Voice note exceeded ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB and was not saved.`;
+          if (recorder.state === 'recording') recorder.stop();
+          return;
+        }
+        voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = (event) => {
+        voiceRecordingErrorRef.current = event.error?.message || 'The browser could not record audio.';
+        setAttachmentStatus(`Voice recording failed: ${voiceRecordingErrorRef.current}`);
+        if (recorder.state === 'recording') recorder.stop();
+      };
+      recorder.onstop = async () => {
+        if (voiceWaveformTimerRef.current !== null) window.clearInterval(voiceWaveformTimerRef.current);
+        voiceWaveformTimerRef.current = null;
+        if (voiceElapsedTimerRef.current !== null) window.clearInterval(voiceElapsedTimerRef.current);
+        voiceElapsedTimerRef.current = null;
+        const waveformSamples = voiceWaveformSamplesRef.current;
+        voiceWaveformSamplesRef.current = [];
+        if (voiceAudioContextRef.current?.state !== 'closed') await voiceAudioContextRef.current?.close();
+        voiceAudioContextRef.current = null;
+        voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        setIsRecordingVoiceNote(false);
+        const recordingDuration = Math.max(1, Math.round((performance.now() - voiceRecordingStartedAtRef.current) / 1000));
+        setVoiceElapsedTime(recordingDuration);
+        if (voiceDiscardRef.current) {
+          voiceDiscardRef.current = false;
+          voiceChunksRef.current = [];
+          setShowVoiceNoteDialog(false);
+          setVoiceDraft(null);
+          setVoiceLiveWaveform([]);
+          return;
+        }
+        const recordingError = voiceRecordingErrorRef.current;
+        voiceRecordingErrorRef.current = '';
+        if (recordingError) {
+          setAttachmentStatus(recordingError);
+          return;
+        }
+        if (!voiceChunksRef.current.length) {
+          setAttachmentStatus('No audio was captured. Check microphone access and try again.');
+          return;
+        }
+
+        const mimeType = (recorder.mimeType || format?.mimeType || '').split(';')[0].toLowerCase();
+        const extensionByMimeType = {
+          'audio/aac': 'aac',
+          'audio/flac': 'flac',
+          'audio/mpeg': 'mp3',
+          'audio/mp4': 'm4a',
+          'audio/ogg': 'ogg',
+          'audio/wav': 'wav',
+          'audio/webm': 'webm',
+        };
+        const extension = extensionByMimeType[mimeType];
+        if (!extension) {
+          setAttachmentStatus('The browser recorded an unsupported audio format. Try another browser.');
+          return;
+        }
+        const file = new File(voiceChunksRef.current, `voice-note-${Date.now()}.${extension}`, { type: mimeType });
+        voiceChunksRef.current = [];
+        const waveform = compressAudioWaveform(waveformSamples);
+        const previewUrl = URL.createObjectURL(file);
+        voiceDraftUrlRef.current = previewUrl;
+        setVoiceDraft({ file, waveform, url: previewUrl, duration: recordingDuration });
+        setVoiceLiveWaveform([]);
+      };
+      recorder.start(1000);
+      voiceRecordingStartedAtRef.current = performance.now();
+      voiceElapsedTimerRef.current = window.setInterval(() => {
+        setVoiceElapsedTime(Math.floor((performance.now() - voiceRecordingStartedAtRef.current) / 1000));
+      }, 100);
+      setIsRecordingVoiceNote(true);
+      setAttachmentStatus('');
+    } catch (error) {
+      if (voiceWaveformTimerRef.current !== null) window.clearInterval(voiceWaveformTimerRef.current);
+      voiceWaveformTimerRef.current = null;
+      if (voiceElapsedTimerRef.current !== null) window.clearInterval(voiceElapsedTimerRef.current);
+      voiceElapsedTimerRef.current = null;
+      if (voiceAudioContextRef.current?.state !== 'closed') await voiceAudioContextRef.current?.close();
+      voiceAudioContextRef.current = null;
+      stream?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      setAttachmentStatus(`Could not start voice recording: ${error.message || 'microphone access was denied.'}`);
+    } finally {
+      setIsStartingVoiceNote(false);
+    }
+  };
+
+  const stopVoiceNote = () => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder?.state !== 'recording') return;
+    recorder.stop();
+  };
+
+  const discardVoiceNote = () => {
+    voiceDiscardRef.current = true;
+    if (voiceRecorderRef.current?.state === 'recording') {
+      voiceRecorderRef.current.stop();
+    } else {
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      if (voiceWaveformTimerRef.current !== null) window.clearInterval(voiceWaveformTimerRef.current);
+      voiceWaveformTimerRef.current = null;
+      if (voiceElapsedTimerRef.current !== null) window.clearInterval(voiceElapsedTimerRef.current);
+      voiceElapsedTimerRef.current = null;
+      setIsStartingVoiceNote(false);
+      setShowVoiceNoteDialog(false);
+      setVoiceDraft(null);
+      setVoiceLiveWaveform([]);
+      setAttachmentStatus('');
+      if (voiceDraftUrlRef.current) URL.revokeObjectURL(voiceDraftUrlRef.current);
+      voiceDraftUrlRef.current = '';
+    }
+  };
+
+  const addVoiceNoteToBoard = async () => {
+    if (!voiceDraft || isAddingAttachment) return;
+    const saved = await addAttachmentFile(voiceDraft.file, {
+      duration: voiceDraft.duration,
+      waveform: voiceDraft.waveform,
+    });
+    if (!saved) return;
+    setShowVoiceNoteDialog(false);
+    setVoiceDraft(null);
+    setVoiceLiveWaveform([]);
+    if (voiceDraftUrlRef.current) URL.revokeObjectURL(voiceDraftUrlRef.current);
+    voiceDraftUrlRef.current = '';
   };
 
   const confirmRemoveAttachment = () => {
@@ -1712,6 +2093,9 @@ export default function NoteWall({ boardId = null }) {
                 <button type="button" disabled={isAddingAttachment} title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`} onClick={(event) => { closeToolbarMenu(event); attachmentInputRef.current?.click(); }}>
                   <FilePlus2 size={15} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
                 </button>
+                <button type="button" disabled={isAddingAttachment || isStartingVoiceNote || isRecordingVoiceNote} onClick={(event) => { closeToolbarMenu(event); startVoiceNote(); }}>
+                  <Mic size={15} /> {isStartingVoiceNote ? 'Requesting microphone…' : 'Record voice note'}
+                </button>
                 <button type="button" onClick={(event) => { closeToolbarMenu(event); setWebClipError(''); setShowAddLinkDialog(true); }}>
                   <Link2 size={15} /> Add link
                 </button>
@@ -2113,12 +2497,12 @@ export default function NoteWall({ boardId = null }) {
             }))}
             {visibleAttachments.map((attachment) => {
               const position = wall.positions[attachment.id] || { x: 30, y: 30 };
-              const dimensions = wall.sizes?.[attachment.id] || DEFAULT_ATTACHMENT_SIZE;
+              const dimensions = wall.sizes?.[attachment.id] || (attachment.mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : DEFAULT_ATTACHMENT_SIZE);
               const url = attachmentUrls[attachment.id];
               return (
                 <article
                   key={`attachment:${attachment.id}`}
-                  className="note-wall-attachment"
+                  className={`note-wall-attachment${attachment.mediaType === 'audio' ? ' is-audio' : ''}`}
                   data-node-id={String(attachment.id)}
                   data-node-type="attachment"
                   aria-label={`${attachment.mediaType} attachment: ${attachment.name}`}
@@ -2155,11 +2539,7 @@ export default function NoteWall({ boardId = null }) {
                       <img src={url} alt={attachment.name} draggable="false" />
                     ) : attachment.mediaType === 'pdf' ? (
                       <iframe src={url} title={`PDF preview: ${attachment.name}`} />
-                    ) : (
-                      <audio src={url} controls preload="metadata" aria-label={`Play ${attachment.name}`}>
-                        Your browser does not support audio playback.
-                      </audio>
-                    )}
+                    ) : <WallAudioPlayer attachment={attachment} url={url} />}
                   </div>
                   {CONNECTION_ANCHORS.map((anchor) => (
                     <button
@@ -2313,6 +2693,69 @@ export default function NoteWall({ boardId = null }) {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+      {showVoiceNoteDialog && (
+        <div className="note-wall-modal-backdrop note-wall-voice-backdrop" role="presentation" onClick={discardVoiceNote}>
+          <section className="note-wall-modal note-wall-voice-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-voice-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Discard voice note" onClick={discardVoiceNote}><X size={17} /></button>
+            <div className={`note-wall-voice-orb${isRecordingVoiceNote ? ' is-recording' : ''}${voiceDraft ? ' has-preview' : ''}`} aria-hidden="true">
+              <Mic size={27} />
+            </div>
+            <h2 id="note-wall-voice-title">{voiceDraft ? 'Listen before saving' : isRecordingVoiceNote ? 'Recording your voice note' : 'Voice note'}</h2>
+            {isRecordingVoiceNote ? (
+              <>
+                <p className="note-wall-voice-hint">Your note is only saved to the board when you choose Add to board.</p>
+                <div className="note-wall-voice-live-wave" role="img" aria-label="Live microphone waveform">
+                  {Array.from({ length: 32 }, (_, index) => {
+                    const sourceIndex = index - (32 - voiceLiveWaveform.length);
+                    return sourceIndex < 0 ? 12 : voiceLiveWaveform[sourceIndex];
+                  }).map((height, index) => (
+                    <span key={index} style={{ height: `${height}%`, '--wave-index': index }} />
+                  ))}
+                </div>
+                <p className="note-wall-voice-timer" aria-label={`Recording time ${formatAudioTime(voiceElapsedTime)}`}>{formatAudioTime(voiceElapsedTime)}</p>
+              </>
+            ) : voiceDraft ? (
+              <>
+                <p className="note-wall-voice-hint">Play it back, then keep it or discard it before it reaches your board.</p>
+                <WallAudioPlayer
+                  attachment={{ name: voiceDraft.file.name, waveform: voiceDraft.waveform, duration: voiceDraft.duration }}
+                  url={voiceDraft.url}
+                  initialDuration={voiceDraft.duration}
+                />
+                <span className="note-wall-voice-file-size">{(voiceDraft.file.size / 1024).toFixed(0)} KB · saved only after you add it</span>
+              </>
+            ) : isStartingVoiceNote ? (
+              <p className="note-wall-voice-hint" role="status">Waiting for microphone permission…</p>
+            ) : attachmentStatus ? (
+              <p className="note-wall-voice-error" role="alert">{attachmentStatus}</p>
+            ) : (
+              <p className="note-wall-voice-hint">Allow microphone access to start recording.</p>
+            )}
+            <div className="note-wall-voice-actions">
+              {isRecordingVoiceNote ? (
+                <>
+                  <button type="button" className="note-wall-voice-discard" onClick={discardVoiceNote}><Trash2 size={15} /> Discard</button>
+                  <button type="button" className="note-wall-voice-stop" onClick={stopVoiceNote}><Square size={14} fill="currentColor" /> Stop recording</button>
+                </>
+              ) : voiceDraft ? (
+                <>
+                  <button type="button" className="note-wall-voice-discard" onClick={discardVoiceNote}><Trash2 size={15} /> Delete recording</button>
+                  <button type="button" className="note-wall-voice-save" disabled={isAddingAttachment} onClick={addVoiceNoteToBoard}>
+                    <Plus size={15} /> {isAddingAttachment ? 'Adding to board…' : 'Add to board'}
+                  </button>
+                </>
+              ) : isStartingVoiceNote ? (
+                <button type="button" className="note-wall-voice-discard" onClick={discardVoiceNote}>Cancel</button>
+              ) : (
+                <>
+                  <button type="button" className="note-wall-voice-discard" onClick={discardVoiceNote}>Close</button>
+                  <button type="button" className="note-wall-voice-save" onClick={startVoiceNote}><Mic size={15} /> Try again</button>
+                </>
+              )}
+            </div>
           </section>
         </div>
       )}

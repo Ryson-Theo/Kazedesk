@@ -1113,6 +1113,143 @@
   touch-action: none;
 }
 
+.note-wall-attachment.is-audio {
+  min-width: 280px;
+  min-height: 100px;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-color: color-mix(in srgb, var(--lp-accent) 32%, var(--lp-line));
+  background:
+    radial-gradient(ellipse at 82% 50%, color-mix(in srgb, var(--lp-accent) 8%, transparent), transparent 58%),
+    var(--lp-surface-raised);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.note-wall-attachment.is-audio .note-wall-attachment-move {
+  min-height: 18px;
+  font-size: 0.62rem;
+}
+
+.note-wall-audio-player {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 40px;
+  grid-template-columns: 32px minmax(28px, 1fr) auto 32px;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.note-wall-audio-element {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.note-wall-audio-play {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--lp-accent) 56%, var(--lp-line));
+  border-radius: 50%;
+  background: var(--lp-accent);
+  color: var(--lp-accent-ink);
+  cursor: pointer;
+  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.note-wall-audio-play:hover {
+  transform: scale(1.05);
+  filter: brightness(1.06);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--lp-accent) 32%, transparent);
+}
+
+.note-wall-audio-wave {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1px;
+  overflow: hidden;
+  padding: 0 1px;
+  border-radius: 5px;
+}
+
+.note-wall-audio-wave > span {
+  display: block;
+  width: 3px;
+  min-width: 2px;
+  max-height: 100%;
+  flex: 1 1 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--lp-muted) 46%, transparent);
+  transition: background-color 200ms ease, transform 200ms ease;
+}
+
+.note-wall-audio-wave > span.is-played {
+  background: var(--lp-accent);
+}
+
+.note-wall-audio-wave.is-playing > span {
+  animation: note-wall-audio-wave-pulse 700ms ease-in-out infinite alternate;
+  animation-delay: calc(var(--wave-index, 0) * -19ms);
+}
+
+.note-wall-audio-wave:focus-within {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+.note-wall-audio-seek {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0.015;
+  cursor: pointer;
+}
+
+.note-wall-audio-seek:disabled { cursor: default; }
+
+.note-wall-audio-time {
+  color: var(--lp-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.note-wall-audio-speed {
+  min-width: 32px;
+  min-height: 26px;
+  padding: 0.2rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--lp-surface) 86%, transparent);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.note-wall-audio-speed:hover { border-color: var(--lp-accent); color: var(--lp-accent); }
+.note-wall-audio-error { grid-column: 2 / -1; color: #ef9898; font-size: 0.58rem; }
+.note-wall-audio-player button:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
+
+@keyframes note-wall-audio-wave-pulse {
+  from { transform: scaleY(0.82); }
+  to { transform: scaleY(1); }
+}
+
 .note-wall-attachment:focus-within { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
 
 .note-wall-attachment-move {
@@ -1752,6 +1889,144 @@
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
+.note-wall-voice-backdrop {
+  z-index: 40;
+  background: radial-gradient(ellipse at center, rgba(182, 210, 173, 0.09), rgba(4, 7, 5, 0.76) 72%);
+  backdrop-filter: blur(12px);
+}
+
+.note-wall-voice-dialog {
+  display: flex;
+  width: min(460px, 100%);
+  min-height: 390px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  overflow: hidden;
+  padding: 2.4rem 2rem 1.8rem;
+  border-color: color-mix(in srgb, var(--lp-accent) 24%, var(--lp-line));
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 50% 25%, color-mix(in srgb, var(--lp-accent) 10%, transparent), transparent 44%),
+    var(--lp-surface-raised);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  text-align: center;
+}
+
+.note-wall-voice-dialog h2 {
+  margin: 0.25rem 1.5rem 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.65rem;
+  font-weight: 400;
+}
+
+.note-wall-voice-orb {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--lp-accent) 44%, var(--lp-line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lp-accent) 12%, var(--lp-surface));
+  color: var(--lp-accent);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--lp-accent) 12%, transparent), inset 0 0 20px color-mix(in srgb, var(--lp-accent) 7%, transparent);
+  transition: background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.note-wall-voice-orb.is-recording {
+  transform: scale(1.05);
+  background: color-mix(in srgb, var(--lp-accent) 22%, var(--lp-surface));
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--lp-accent) 5%, transparent), 0 0 46px color-mix(in srgb, var(--lp-accent) 24%, transparent);
+  animation: note-wall-voice-orb-pulse 1.8s ease-in-out infinite;
+}
+
+.note-wall-voice-orb.has-preview { color: var(--lp-text); }
+.note-wall-voice-hint { max-width: 340px; margin: 0; color: var(--lp-muted); font-size: 0.72rem; line-height: 1.6; }
+.note-wall-voice-error { max-width: 340px; margin: 0; color: #ef9898; font-size: 0.72rem; line-height: 1.6; }
+
+.note-wall-voice-live-wave {
+  display: flex;
+  width: min(340px, 100%);
+  height: 92px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 0.4rem;
+}
+
+.note-wall-voice-live-wave span {
+  width: 4px;
+  min-width: 2px;
+  max-height: 100%;
+  flex: 1 1 3px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lp-accent) 70%, #fff), var(--lp-accent) 55%, color-mix(in srgb, var(--lp-accent) 44%, transparent));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lp-accent) 20%, transparent);
+  transition: height 70ms linear;
+}
+
+.note-wall-voice-timer {
+  margin: -0.5rem 0 0;
+  color: var(--lp-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.note-wall-voice-dialog .note-wall-audio-player {
+  width: 100%;
+  max-width: 370px;
+  min-height: 54px;
+  grid-template-columns: 38px minmax(28px, 1fr) auto 38px;
+  gap: 0.55rem;
+}
+
+.note-wall-voice-dialog .note-wall-audio-play { width: 38px; height: 38px; }
+.note-wall-voice-dialog .note-wall-audio-wave { height: 48px; }
+.note-wall-voice-dialog .note-wall-audio-time { font-size: 0.62rem; }
+.note-wall-voice-dialog .note-wall-audio-speed { min-width: 36px; min-height: 30px; }
+.note-wall-voice-file-size { color: var(--lp-soft); font-size: 0.62rem; }
+
+.note-wall-voice-actions {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.45rem;
+}
+
+.note-wall-voice-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 9px;
+  background: var(--lp-surface);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.note-wall-voice-actions button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--lp-accent); }
+.note-wall-voice-actions button:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
+.note-wall-voice-actions button:disabled { cursor: progress; opacity: 0.65; }
+.note-wall-voice-actions .note-wall-voice-discard { color: var(--lp-muted); }
+.note-wall-voice-actions .note-wall-voice-stop { border-color: color-mix(in srgb, #f08080 55%, var(--lp-line)); background: color-mix(in srgb, #8f3434 18%, var(--lp-surface)); color: #ffb1a9; }
+.note-wall-voice-actions .note-wall-voice-save { border-color: var(--lp-accent); background: var(--lp-accent); color: var(--lp-accent-ink); }
+
+@keyframes note-wall-voice-orb-pulse {
+  0%, 100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--lp-accent) 5%, transparent), 0 0 34px color-mix(in srgb, var(--lp-accent) 18%, transparent); }
+  50% { box-shadow: 0 0 0 13px color-mix(in srgb, var(--lp-accent) 4%, transparent), 0 0 48px color-mix(in srgb, var(--lp-accent) 28%, transparent); }
+}
+
 .note-wall-tidy-dialog { width: min(480px, 100%); }
 .note-wall-tidy-dialog h2 { margin: 0 2rem 0.5rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; font-weight: 400; }
 .note-wall-tidy-dialog p { color: var(--lp-muted); font-size: 0.78rem; }
@@ -1982,6 +2257,14 @@
   .note-wall-board-note-preview { min-height: 190px; }
 }
 
+@media (max-width: 520px) {
+  .note-wall-voice-backdrop { padding: 0.75rem; }
+  .note-wall-voice-dialog { min-height: 360px; padding: 2rem 1rem 1.3rem; border-radius: 18px; }
+  .note-wall-voice-live-wave { height: 76px; gap: 3px; }
+  .note-wall-voice-dialog .note-wall-audio-player { grid-template-columns: 34px minmax(28px, 1fr) auto 34px; gap: 0.35rem; }
+  .note-wall-voice-dialog .note-wall-audio-play { width: 34px; height: 34px; }
+}
+
 .note-wall-modal h2 { margin: 0 2rem 1rem 0; font-family: "Instrument Serif", Georgia, serif; font-size: 1.7rem; font-weight: 400; }
 .note-wall-modal > p { margin: 0; color: var(--lp-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .note-wall-note-view-header { position: relative; padding-right: 5.2rem; }
@@ -2036,6 +2319,16 @@
   .note-wall-connection-panel .note-wall-link-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .note-wall-connection-panel { padding: 0.75rem; }
   .note-wall-board-actions { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-wall-audio-play,
+  .note-wall-audio-wave > span,
+  .note-wall-voice-orb,
+  .note-wall-voice-actions button { transition: none; }
+  .note-wall-audio-wave.is-playing > span { animation: none; }
+  .note-wall-voice-live-wave span,
+  .note-wall-voice-orb.is-recording { animation: none; }
 }
 
 @media (min-width: 1500px) {
