@@ -20,6 +20,7 @@
 
 - Create independent note-wall boards, each with its own notes, tasks, files, links, and layout.
 - Write notes in Markdown; pin links, clip web pages, and connect related ideas.
+- Record voice notes with a live waveform, review playback, and discard or add recordings to the board. Audio nodes include seek and playback-speed controls.
 - Pan, zoom, filter, and tidy your wall. Changes save locally, with undo and redo.
 - Export walls as PNG, PDF, Markdown, or JSON. Optional private Google Drive saves are available.
 
@@ -108,7 +109,7 @@ Docker is not required for the current static application. See [ARCHITECTURE.md]
 
 ## Privacy and browser capabilities
 
-Kazedesk has no application server or account system. Settings, tasks, notes, board definitions, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. Note-wall attachment file contents are stored separately in browser `IndexedDB`. This data does not automatically sync between browsers or devices. Clearing site data removes it; use the workspace backup feature or export the wall before changing browsers or devices. Google Drive saves are optional private JSON copies; downloadable PNG, print-to-PDF, Markdown, and JSON wall exports are also available. Attachment file contents are not included in those wall exports or Drive saves.
+Kazedesk has no application server or account system. Settings, tasks, notes, board definitions, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. Note-wall attachment file contents, including voice recordings, are stored separately in browser `IndexedDB` after you add them to a board. Recording requires browser microphone permission and is available on secure origins such as HTTPS or localhost. Recordings can be previewed or discarded before saving to the board. This data does not automatically sync between browsers or devices. Clearing site data removes it; use the workspace backup feature or export the wall before changing browsers or devices. Google Drive saves are optional private JSON copies; downloadable PNG, print-to-PDF, Markdown, and JSON wall exports are also available. Attachment file contents are not included in those wall exports or Drive saves.
 
 The weather widget sends the configured city to Open-Meteo for geocoding and weather data, with an attribution link beside displayed weather. City lookups are cached in the browser for 30 days and forecasts for four hours. To limit accidental repeat requests, each browser profile allows up to three city lookups and six forecast requests per UTC day, with a short cooldown between same-type requests. These client-side limits can be cleared or bypassed and are not a shared quota or security boundary. Open-Meteo's free API is for non-commercial use and has daily and short-term request limits; check its [terms](https://open-meteo.com/en/terms) before launch. A shared edge cache or backend and an appropriate API plan are needed to enforce limits across visitors or support commercial use. YouTube embeds and externally hosted landing-page media may also connect to their respective providers when used. Review those providers' privacy policies if this matters to your use.
 
