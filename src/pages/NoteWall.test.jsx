@@ -57,6 +57,23 @@ describe('NoteWall', () => {
     });
   });
 
+  it('switches between connection controls with accessible mobile tabs', () => {
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByText(/Connections/));
+
+    const form = document.getElementById('mobile-connection-panel');
+    expect(form).toHaveClass('is-mobile-tab-link');
+    expect(screen.getByRole('tab', { name: 'Link' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Style' }));
+    expect(form).toHaveClass('is-mobile-tab-style');
+    expect(screen.getByRole('tab', { name: 'Style' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Style' }), { key: 'ArrowRight' });
+    expect(form).toHaveClass('is-mobile-tab-anchors');
+    expect(screen.getByRole('tab', { name: 'Anchors' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('uses and updates the landing page theme preference', () => {
     render(<MemoryRouter><NoteWall /></MemoryRouter>);
 
@@ -996,6 +1013,35 @@ describe('NoteWall', () => {
     fireEvent.click(screen.getByLabelText('Select Idea one card to change its color'));
     fireEvent.change(screen.getByLabelText('Selected card color'), { target: { value: '#dd8800' } });
     await waitFor(() => expect(storageManager.getStickyNotes()[0].color).toBe('#dd8800'));
+  });
+
+  it('draws connections to the rendered size of compact web clips', () => {
+    const clip = {
+      id: 'compact-clip',
+      url: 'https://example.com/article',
+      title: 'Saved article',
+      siteName: 'Example',
+      category: 'Inbox',
+    };
+    storageManager.saveNoteWall({
+      positions: { 1: { x: 20, y: 20 }, [clip.id]: { x: 400, y: 300 } },
+      sizes: { [clip.id]: { width: 320, height: 260 } },
+      webClips: [clip],
+      connections: [{
+        id: 'note-to-clip',
+        from: '1',
+        to: clip.id,
+        fromType: 'note',
+        toType: 'webclip',
+        fromAnchor: 'right',
+        toAnchor: 'top',
+        curved: false,
+      }],
+    });
+
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    expect(document.querySelector('.note-wall-connection-line')).toHaveAttribute('d', 'M 270 115 L 495 300');
   });
 
   it('saves theme-aware colors for crossing lines and preserves them after manual color edits', async () => {

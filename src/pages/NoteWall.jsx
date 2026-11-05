@@ -373,6 +373,46 @@ function getAnchorPoint(position, dimensions, anchor = 'auto') {
   }
 }
 
+function getWallConnectionEndpoint(wall, notes, type, id) {
+  if (type === 'task') {
+    return {
+      position: wall.taskPositions?.[id] || { x: 0, y: 0 },
+      size: { width: 180, height: 42 },
+    };
+  }
+
+  if (type === 'webclip') {
+    const clip = (wall.webClips || []).find((item) => String(item.id) === String(id));
+    const attachedNote = clip?.attachedTo
+      ? notes.find((note) => String(note.id) === String(clip.attachedTo))
+      : null;
+    const offset = attachedNote
+      ? clip.anchorOffset || getAttachedLinkOffset(attachedNote, 0, wall)
+      : null;
+    const notePosition = attachedNote ? wall.positions[attachedNote.id] || { x: 30, y: 30 } : null;
+
+    return {
+      position: attachedNote
+        ? { x: notePosition.x + offset.x, y: notePosition.y + offset.y }
+        : wall.positions[id] || { x: 0, y: 0 },
+      size: clip ? getCompactWebClipSize(clip) : DEFAULT_WEB_CLIP_SIZE,
+    };
+  }
+
+  if (type === 'attachment') {
+    const attachment = (wall.attachments || []).find((item) => String(item.id) === String(id));
+    return {
+      position: wall.positions[id] || { x: 0, y: 0 },
+      size: wall.sizes?.[id] || (attachment?.mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : DEFAULT_ATTACHMENT_SIZE),
+    };
+  }
+
+  return {
+    position: wall.positions[id] || { x: 0, y: 0 },
+    size: wall.sizes?.[id] || { width: CARD_WIDTH, height: CARD_HEIGHT },
+  };
+}
+
 function getNearestAnchor(point, position, dimensions) {
   const distances = {
     top: Math.abs(point.y - position.y),
@@ -477,6 +517,7 @@ export default function NoteWall({ boardId = null }) {
   const [connectionCurved, setConnectionCurved] = useState(true);
   const [connectionFromAnchor, setConnectionFromAnchor] = useState('right');
   const [connectionToAnchor, setConnectionToAnchor] = useState('left');
+  const [mobileConnectionTab, setMobileConnectionTab] = useState('link');
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [driveStatus, setDriveStatus] = useState('');
@@ -1714,14 +1755,7 @@ export default function NoteWall({ boardId = null }) {
         const to = target?.getAttribute('data-node-id');
         const toType = target?.getAttribute('data-node-type') || 'note';
         if (to && !(toType === (gesture.nodeType || 'note') && String(to) === String(gesture.id))) {
-          const targetNotePosition = toType === 'task'
-            ? wall.taskPositions?.[to] || { x: 30, y: 30 }
-            : wall.positions[to] || { x: 30, y: 30 };
-          const targetNoteSize = toType === 'task'
-            ? { width: 180, height: 42 }
-            : wall.sizes?.[to] || (toType === 'attachment'
-              ? DEFAULT_ATTACHMENT_SIZE
-              : toType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
+          const targetGeometry = getWallConnectionEndpoint(wallRef.current, notes, toType, to);
           const pointer = getBoardPoint(event);
           const fromType = gesture.nodeType || 'note';
           const task = fromType === 'task'
@@ -1741,7 +1775,7 @@ export default function NoteWall({ boardId = null }) {
               style: task ? 'dashed' : connectionStyle,
               curved: connectionCurved,
               fromAnchor: gesture.anchor,
-              toAnchor: getNearestAnchor(pointer, targetNotePosition, targetNoteSize),
+              toAnchor: getNearestAnchor(pointer, targetGeometry.position, targetGeometry.size),
             }],
           }));
           setSelectedConnectionId(null);
@@ -1759,7 +1793,7 @@ export default function NoteWall({ boardId = null }) {
       window.removeEventListener('pointerup', endGesture);
       window.removeEventListener('pointercancel', endGesture);
     };
-  }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, tasks, wall.positions, wall.sizes, wall.taskPositions]);
+  }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, notes, tasks, wall.attachments, wall.positions, wall.sizes, wall.taskPositions, wall.webClips]);
 
   const startPan = (event) => {
     if (!panMode || event.target.closest('.note-wall-card, .note-wall-attachment, .note-wall-webclip, .note-wall-task') || event.target.closest('button')) return;
@@ -2014,8 +2048,21 @@ export default function NoteWall({ boardId = null }) {
     const summary = details?.querySelector('summary');
     if (!details?.open || !panel || !summary) return;
 
+    if (window.innerWidth <= 600) {
+      Object.assign(panel.style, {
+        position: 'fixed',
+        left: '8px',
+        right: '8px',
+        top: 'auto',
+        bottom: 'max(8px, env(safe-area-inset-bottom))',
+        width: 'auto',
+        maxHeight: 'min(240px, calc(100dvh - 16px))',
+      });
+      return;
+    }
+
     const viewportPadding = 16;
-    const panelWidth = Math.min(760, window.innerWidth - viewportPadding * 2);
+    const panelWidth = Math.min(440, Math.max(0, window.innerWidth - viewportPadding * 2));
     const panelHeight = Math.min(panel.scrollHeight, window.innerHeight - viewportPadding * 2);
     const summaryBounds = summary.getBoundingClientRect();
     const left = Math.min(
@@ -2030,6 +2077,8 @@ export default function NoteWall({ boardId = null }) {
     Object.assign(panel.style, {
       position: 'fixed',
       left: `${left}px`,
+      right: 'auto',
+      bottom: 'auto',
       top: `${top}px`,
       width: `${panelWidth}px`,
       maxHeight: `${window.innerHeight - top - viewportPadding}px`,
@@ -2153,42 +2202,82 @@ export default function NoteWall({ boardId = null }) {
               </button>
             </div>}
             {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
-              <details className="note-wall-connection-tools" ref={connectionPanelRef} onToggle={positionConnectionPanel}>
+              <details className={`note-wall-connection-tools${selectedConnection ? ' has-selected-connection' : ''}`} ref={connectionPanelRef} onToggle={positionConnectionPanel}>
                 <summary aria-label="Connections"><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}<ChevronDown size={13} /></summary>
                 <div className="note-wall-connection-panel">
                   <div className="note-wall-connection-panel-heading">
-                    <strong>Create a new connection</strong>
-                    <span>Link notes and related items. Folder links are solid, shared tags dotted, and task links dashed.</span>
+                    <div>
+                      <strong>{selectedConnection ? 'Edit selected connection' : 'Create a new connection'}</strong>
+                      <span className="note-wall-connection-help">Link notes and related items. Folder links are solid, shared tags dotted, and task links dashed.</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="note-wall-connection-panel-close"
+                      aria-label="Close connections"
+                      onClick={(event) => closeToolbarMenu(event)}
+                    ><X size={17} /></button>
                   </div>
-                  <form className="note-wall-link-form" onSubmit={addConnection}>
-                    <select aria-label="Connection start note" value={connectionFrom} onChange={(event) => setConnectionFrom(event.target.value)}>
+                  <div className="note-wall-connection-tabs" role="tablist" aria-label="Connection options">
+                    {[
+                      ['link', 'Link'],
+                      ['style', 'Style'],
+                      ['anchors', 'Anchors'],
+                    ].map(([tab, label]) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        role="tab"
+                        id={`mobile-connection-tab-${tab}`}
+                        aria-selected={mobileConnectionTab === tab}
+                        aria-controls="mobile-connection-panel"
+                        onClick={() => setMobileConnectionTab(tab)}
+                        onKeyDown={(event) => {
+                          const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')];
+                          const currentIndex = tabs.indexOf(event.currentTarget);
+                          const nextIndex = event.key === 'ArrowRight'
+                            ? (currentIndex + 1) % tabs.length
+                            : event.key === 'ArrowLeft'
+                              ? (currentIndex - 1 + tabs.length) % tabs.length
+                              : event.key === 'Home'
+                                ? 0
+                                : event.key === 'End' ? tabs.length - 1 : -1;
+                          if (nextIndex < 0) return;
+                          event.preventDefault();
+                          tabs[nextIndex].focus();
+                          tabs[nextIndex].click();
+                        }}
+                      >{label}</button>
+                    ))}
+                  </div>
+                  <form id="mobile-connection-panel" className={`note-wall-link-form is-mobile-tab-${mobileConnectionTab}`} role="tabpanel" aria-labelledby={`mobile-connection-tab-${mobileConnectionTab}`} onSubmit={addConnection}>
+                    <select className="mobile-connection-link" aria-label="Connection start note" value={connectionFrom} onChange={(event) => setConnectionFrom(event.target.value)}>
                       <option value="">From note…</option>
                       {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
                     </select>
-                    <select aria-label="Connection end note" value={connectionTo} onChange={(event) => setConnectionTo(event.target.value)}>
+                    <select className="mobile-connection-link" aria-label="Connection end note" value={connectionTo} onChange={(event) => setConnectionTo(event.target.value)}>
                       <option value="">To note…</option>
                       {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
                     </select>
-                    <label className="note-wall-color-control">Line color
+                    <label className="note-wall-color-control mobile-connection-style">Line color
                       <input aria-label="Connection color" type="color" value={connectionColor} onChange={(event) => setConnectionColor(event.target.value)} />
                     </label>
-                    <select aria-label="Connection style" value={connectionStyle} onChange={(event) => setConnectionStyle(event.target.value)}>
+                    <select className="mobile-connection-style" aria-label="Connection style" value={connectionStyle} onChange={(event) => setConnectionStyle(event.target.value)}>
                       <option value="solid">Solid line</option>
                       <option value="dotted">Dotted line</option>
                       <option value="dashed">Dashed line</option>
                     </select>
-                    <label className="note-wall-inline-option">
+                    <label className="note-wall-inline-option mobile-connection-style">
                       <input type="checkbox" checked={connectionCurved} onChange={(event) => setConnectionCurved(event.target.checked)} />
                       Curved
                     </label>
-                    <select aria-label="Connection start edge" value={connectionFromAnchor} onChange={(event) => setConnectionFromAnchor(event.target.value)}>
+                    <select className="mobile-connection-anchor" aria-label="Connection start edge" value={connectionFromAnchor} onChange={(event) => setConnectionFromAnchor(event.target.value)}>
                       {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
                     </select>
-                    <select aria-label="Connection end edge" value={connectionToAnchor} onChange={(event) => setConnectionToAnchor(event.target.value)}>
+                    <select className="mobile-connection-anchor" aria-label="Connection end edge" value={connectionToAnchor} onChange={(event) => setConnectionToAnchor(event.target.value)}>
                       {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
                     </select>
-                    <button type="submit" className="note-wall-secondary-action" disabled={visibleNotes.length < 2}><Link2 size={14} /> Add connection</button>
-                    <button type="button" className="note-wall-auto-connect" onClick={autoConnectRelated} disabled={!visibleNotes.length || (!visibleTasks.length && visibleNotes.length < 2)} title="Folder links are solid, shared-tag links are dotted, and task-to-note links are dashed. Existing links are kept.">
+                    <button type="submit" className="note-wall-secondary-action mobile-connection-link" disabled={visibleNotes.length < 2}><Link2 size={14} /> Add connection</button>
+                    <button type="button" className="note-wall-auto-connect mobile-connection-link" onClick={autoConnectRelated} disabled={!visibleNotes.length || (!visibleTasks.length && visibleNotes.length < 2)} title="Folder links are solid, shared-tag links are dotted, and task-to-note links are dashed. Existing links are kept.">
                       Auto-connect related
                     </button>
                   </form>
@@ -2200,23 +2289,23 @@ export default function NoteWall({ boardId = null }) {
                   {selectedConnection && (
                     <div className="note-wall-selection-control note-wall-selected-line" role="group" aria-label="Selected connection settings">
                       <strong>Selected line</strong>
-                      <input aria-label="Selected line color" type="color" value={selectedConnection.color || '#a5b4fc'} onChange={(event) => updateSelectedConnection({ color: event.target.value })} />
-                      <select aria-label="Selected line style" value={selectedConnection.style || 'solid'} onChange={(event) => updateSelectedConnection({ style: event.target.value })}>
+                      <input className="mobile-selected-style" aria-label="Selected line color" type="color" value={selectedConnection.color || '#a5b4fc'} onChange={(event) => updateSelectedConnection({ color: event.target.value })} />
+                      <select className="mobile-selected-style" aria-label="Selected line style" value={selectedConnection.style || 'solid'} onChange={(event) => updateSelectedConnection({ style: event.target.value })}>
                         <option value="solid">Solid</option>
                         <option value="dotted">Dotted</option>
                         <option value="dashed">Dashed</option>
                       </select>
-                      <label className="note-wall-inline-option">
+                      <label className="note-wall-inline-option mobile-selected-style">
                         <input aria-label="Selected line curved" type="checkbox" checked={selectedConnection.curved !== false} onChange={(event) => updateSelectedConnection({ curved: event.target.checked })} />
                         Curved
                       </label>
-                      <select aria-label="Selected line start edge" value={selectedConnection.fromAnchor || 'right'} onChange={(event) => updateSelectedConnection({ fromAnchor: event.target.value })}>
+                      <select className="mobile-selected-anchor" aria-label="Selected line start edge" value={selectedConnection.fromAnchor || 'right'} onChange={(event) => updateSelectedConnection({ fromAnchor: event.target.value })}>
                         {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
                       </select>
-                      <select aria-label="Selected line end edge" value={selectedConnection.toAnchor || 'left'} onChange={(event) => updateSelectedConnection({ toAnchor: event.target.value })}>
+                      <select className="mobile-selected-anchor" aria-label="Selected line end edge" value={selectedConnection.toAnchor || 'left'} onChange={(event) => updateSelectedConnection({ toAnchor: event.target.value })}>
                         {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
                       </select>
-                      <button type="button" onClick={() => setSelectedConnectionId(null)} aria-label="Deselect line">Done</button>
+                      <button className="mobile-selected-done" type="button" onClick={() => setSelectedConnectionId(null)} aria-label="Deselect line">Done</button>
                     </div>
                   )}
                 </div>
@@ -2277,20 +2366,10 @@ export default function NoteWall({ boardId = null }) {
               {visibleConnections.map((connection) => {
                 const fromType = connection.fromType || 'note';
                 const toType = connection.toType || 'note';
-                const from = fromType === 'task' ? wall.taskPositions?.[connection.from] || { x: 0, y: 0 } : wall.positions[connection.from] || { x: 0, y: 0 };
-                const to = toType === 'task' ? wall.taskPositions?.[connection.to] || { x: 0, y: 0 } : wall.positions[connection.to] || { x: 0, y: 0 };
-                const fromSize = fromType === 'task'
-                  ? { width: 180, height: 42 }
-                  : wall.sizes?.[connection.from] || (fromType === 'attachment'
-                    ? DEFAULT_ATTACHMENT_SIZE
-                    : fromType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
-                const toSize = toType === 'task'
-                  ? { width: 180, height: 42 }
-                  : wall.sizes?.[connection.to] || (toType === 'attachment'
-                    ? DEFAULT_ATTACHMENT_SIZE
-                    : toType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
-                const start = getAnchorPoint(from, fromSize, connection.fromAnchor || 'right');
-                const end = getAnchorPoint(to, toSize, connection.toAnchor || 'left');
+                const fromGeometry = getWallConnectionEndpoint(wall, notes, fromType, connection.from);
+                const toGeometry = getWallConnectionEndpoint(wall, notes, toType, connection.to);
+                const start = getAnchorPoint(fromGeometry.position, fromGeometry.size, connection.fromAnchor || 'right');
+                const end = getAnchorPoint(toGeometry.position, toGeometry.size, connection.toAnchor || 'left');
                 const path = getConnectionPath(start, end, connection.fromAnchor || 'right', connection.toAnchor || 'left', connection.curved !== false);
                 const dash = connection.style === 'dotted' ? '2 9' : connection.style === 'dashed' ? '12 8' : undefined;
                 return (
@@ -2317,14 +2396,8 @@ export default function NoteWall({ boardId = null }) {
                 );
               })}
               {connectionPreview && (() => {
-                const isTask = connectionPreview.fromType === 'task';
-                const from = isTask ? wall.taskPositions?.[connectionPreview.from] || { x: 0, y: 0 } : wall.positions[connectionPreview.from] || { x: 0, y: 0 };
-                const dimensions = isTask
-                  ? { width: 180, height: 42 }
-                  : wall.sizes?.[connectionPreview.from] || (connectionPreview.fromType === 'attachment'
-                    ? DEFAULT_ATTACHMENT_SIZE
-                    : connectionPreview.fromType === 'webclip' ? DEFAULT_WEB_CLIP_SIZE : { width: CARD_WIDTH, height: CARD_HEIGHT });
-                const start = getAnchorPoint(from, dimensions, connectionPreview.anchor);
+                const geometry = getWallConnectionEndpoint(wall, notes, connectionPreview.fromType || 'note', connectionPreview.from);
+                const start = getAnchorPoint(geometry.position, geometry.size, connectionPreview.anchor);
                 return <path d={`M ${start.x} ${start.y} L ${connectionPreview.x} ${connectionPreview.y}`} stroke={connectionColor} strokeWidth="3" strokeDasharray="5 6" />;
               })()}
             </svg>
