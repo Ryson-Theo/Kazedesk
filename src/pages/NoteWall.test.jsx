@@ -38,10 +38,13 @@ describe('NoteWall', () => {
 
     fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'all' } });
     fireEvent.click(screen.getByText(/Connections/));
-    fireEvent.change(screen.getByLabelText('Connection start note'), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText('Connection end note'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Connection start note' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Idea one' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Connection end note' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Idea two' }));
     fireEvent.change(screen.getByLabelText('Connection color'), { target: { value: '#ff0000' } });
-    fireEvent.change(screen.getByLabelText('Connection style'), { target: { value: 'dashed' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Connection style' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Dashed line' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add connection' }));
 
     await waitFor(() => {
@@ -1027,7 +1030,8 @@ describe('NoteWall', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Select connection from Idea one to Idea two' }));
     fireEvent.change(screen.getByLabelText('Selected line color'), { target: { value: '#00aa55' } });
-    fireEvent.change(screen.getByLabelText('Selected line end edge'), { target: { value: 'top' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Selected line end edge' }));
+    fireEvent.click(screen.getByRole('option', { name: 'End: top' }));
     fireEvent.click(screen.getByLabelText('Selected line curved'));
     await waitFor(() => {
       expect(storageManager.getNoteWall().connections[0]).toMatchObject({
@@ -1035,7 +1039,7 @@ describe('NoteWall', () => {
         toAnchor: 'top',
         curved: false,
       });
-      expect(screen.getByLabelText('Selected line start edge')).toHaveValue('right');
+      expect(screen.getByLabelText('Selected line start edge')).toHaveAttribute('aria-valuetext', 'Start: right');
     });
 
     fireEvent.click(screen.getByLabelText('Select Idea one card to change its color'));
@@ -1221,8 +1225,10 @@ describe('NoteWall', () => {
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     fireEvent.click(screen.getByText(/Connections/));
-    fireEvent.change(screen.getByLabelText('Connection start note'), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText('Connection end note'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Connection start note' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Idea one' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Connection end note' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Idea two' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add connection' }));
     await waitFor(() => expect(storageManager.getNoteWall().connections).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));

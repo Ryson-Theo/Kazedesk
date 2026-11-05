@@ -513,10 +513,14 @@
   border: 1px solid var(--lp-line);
   border-radius: 14px;
   background: var(--lp-surface-raised);
+  color-scheme: dark;
+  accent-color: var(--lp-accent);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34), 0 2px 8px rgba(0, 0, 0, 0.16);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+.note-wall-page.landing-theme-light .note-wall-connection-panel { color-scheme: light; }
 
 .note-wall-connection-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
 .note-wall-connection-panel-heading > div { display: flex; min-width: 0; flex-direction: column; gap: 0.15rem; }
@@ -545,12 +549,10 @@
   gap: 0.55rem;
 }
 
-.note-wall-connection-panel .note-wall-link-form > select {
+.note-wall-connection-panel .note-wall-link-form > .note-wall-select {
   width: 100%;
   min-width: 0;
   max-width: none;
-  min-height: 40px;
-  font-size: 0.72rem;
 }
 
 .note-wall-connection-panel .note-wall-color-control {
@@ -626,7 +628,7 @@
   font-size: 0.7rem;
 }
 
-.note-wall-selection-control select { max-width: 140px; }
+.note-wall-selection-control > .note-wall-select { max-width: 140px; }
 .note-wall-selection-control button { cursor: pointer; }
 .note-wall-selection-control button:hover { border-color: var(--lp-accent); color: var(--lp-accent); }
 .note-wall-selected-line {
@@ -639,7 +641,83 @@
 }
 .note-wall-selected-line > strong { grid-column: 1 / -1; }
 .note-wall-selected-line strong { color: var(--lp-text); }
-.note-wall-selected-line select { width: 100%; min-width: 0; max-width: none; }
+.note-wall-selected-line > .note-wall-select { width: 100%; min-width: 0; max-width: none; }
+
+.note-wall-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  color: var(--lp-text);
+  font-size: 0.72rem;
+}
+
+.note-wall-select-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  border-color: var(--lp-line);
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  background: var(--lp-surface);
+  color: var(--lp-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.note-wall-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-wall-select-trigger > svg { flex: 0 0 auto; color: var(--lp-muted); transition: transform 140ms ease; }
+.note-wall-select.is-open .note-wall-select-trigger > svg { transform: rotate(180deg); }
+.note-wall-select-trigger:hover { border-color: var(--lp-accent); }
+.note-wall-select-trigger:focus-visible {
+  border-color: var(--lp-accent);
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+.note-wall-select-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: min(200px, 40vh);
+  gap: 0.1rem;
+  padding: 0.2rem;
+  overflow-y: auto;
+  border: 1px solid var(--lp-line);
+  border-radius: 9px;
+  background: var(--lp-surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  overscroll-behavior: contain;
+}
+.note-wall-select-option {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+.note-wall-select-option:hover,
+.note-wall-select-option.is-active { background: var(--lp-surface); }
+.note-wall-select-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--lp-accent) 22%, var(--lp-surface));
+  color: var(--lp-accent);
+  font-weight: 700;
+}
+.note-wall-select-option:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: -2px; }
 
 .note-wall-board-actions {
   display: flex;
@@ -2364,7 +2442,7 @@
     box-sizing: border-box;
     gap: 0.45rem;
     padding: 0.6rem 0.7rem;
-    overflow: hidden;
+    overflow: visible;
   }
   .note-wall-connection-panel-heading { align-items: center; }
   .note-wall-connection-panel-heading strong { font-size: 0.78rem; }
@@ -2401,8 +2479,10 @@
   .note-wall-connection-panel .note-wall-link-form.is-mobile-tab-link > .mobile-connection-link,
   .note-wall-connection-panel .note-wall-link-form.is-mobile-tab-style > .mobile-connection-style,
   .note-wall-connection-panel .note-wall-link-form.is-mobile-tab-anchors > .mobile-connection-anchor { display: flex; }
-  .note-wall-connection-panel .note-wall-link-form > select,
+  .note-wall-connection-panel .note-wall-link-form > .note-wall-select,
   .note-wall-connection-panel .note-wall-link-form > button { min-height: 36px; }
+  .note-wall-connection-panel .note-wall-select-trigger { min-height: 36px; }
+  .note-wall-select-menu { top: auto; bottom: calc(100% + 5px); }
   .note-wall-connection-panel .note-wall-color-control { min-height: 36px; font-size: 0.64rem; }
   .note-wall-connection-panel .note-wall-link-form input[type="color"] { height: 26px; }
   .note-wall-connection-panel .note-wall-link-form .note-wall-inline-option { justify-content: flex-start; }
@@ -2421,7 +2501,7 @@
   .note-wall-connection-tools.has-selected-connection.is-mobile-tab-style .note-wall-link-form > .mobile-connection-style,
   .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-link-form > .mobile-connection-anchor { display: none; }
   .note-wall-connection-tools.has-selected-connection.is-mobile-tab-style .note-wall-selected-line .mobile-selected-style { display: inline-flex; }
-  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-selected-line .mobile-selected-anchor { display: block; }
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-selected-line .mobile-selected-anchor { display: inline-flex; }
   .note-wall-connection-tools.has-selected-connection .note-wall-selected-line .mobile-selected-done { display: none; }
   .note-wall-connection-tools.has-selected-connection .note-wall-selected-line > input[type="color"] { justify-self: start; }
 }

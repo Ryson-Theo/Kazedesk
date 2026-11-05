@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Mic, Moon, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
 import MarkdownContent from '../components/MarkdownContent';
@@ -33,6 +34,152 @@ const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
 const DEFAULT_AUDIO_SIZE = { width: 360, height: 108 };
 const DEFAULT_WEB_CLIP_SIZE = { width: 320, height: 260 };
 const DEFAULT_BOARD_TASK_CATEGORIES = ['Inbox'];
+
+function ConnectionSelect({ label, value, options, onChange, className = '' }) {
+  const id = useId();
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const selectedOption = options[selectedIndex];
+
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    const positionMenu = () => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (!trigger || !menu) return;
+
+      const bounds = trigger.getBoundingClientRect();
+      const viewportPadding = 12;
+      const desiredHeight = Math.min(200, menu.scrollHeight, window.innerHeight - viewportPadding * 2);
+      const spaceAbove = Math.max(0, bounds.top - viewportPadding - 5);
+      const spaceBelow = Math.max(0, window.innerHeight - bounds.bottom - viewportPadding - 5);
+      const opensAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow;
+      const availableHeight = Math.max(0, opensAbove ? spaceAbove : spaceBelow);
+      const height = Math.min(desiredHeight, availableHeight);
+      const width = Math.min(bounds.width, window.innerWidth - viewportPadding * 2);
+      const left = Math.min(Math.max(viewportPadding, bounds.left), window.innerWidth - width - viewportPadding);
+      const top = opensAbove ? bounds.top - height - 5 : bounds.bottom + 5;
+      const themeRoot = document.querySelector('.note-wall-page');
+      const theme = themeRoot ? getComputedStyle(themeRoot) : null;
+
+      Object.assign(menu.style, {
+        position: 'fixed',
+        left: `${left}px`,
+        top: `${top}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+        maxHeight: `${height}px`,
+      });
+      if (theme) {
+        ['--lp-surface', '--lp-line', '--lp-text', '--lp-accent'].forEach((token) => {
+          menu.style.setProperty(token, theme.getPropertyValue(token).trim());
+        });
+      }
+    };
+
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [isOpen, options.length]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!rootRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [isOpen]);
+
+  const openMenu = (index = selectedIndex) => {
+    setActiveIndex(index);
+    setIsOpen(true);
+  };
+
+  const chooseOption = (index) => {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      if (!isOpen) {
+        openMenu(selectedIndex);
+        return;
+      }
+      setActiveIndex((index) => (index + direction + options.length) % options.length);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      const index = event.key === 'Home' ? 0 : options.length - 1;
+      if (!isOpen) openMenu(index);
+      else setActiveIndex(index);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (isOpen) chooseOption(activeIndex);
+      else openMenu();
+    } else if (event.key === 'Escape' && isOpen) {
+      event.preventDefault();
+      setIsOpen(false);
+    } else if (event.key === 'Tab' && isOpen) {
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div className={`note-wall-select${isOpen ? ' is-open' : ''}${className ? ` ${className}` : ''}`} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="note-wall-select-trigger"
+        role="combobox"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={`${id}-listbox`}
+        aria-activedescendant={isOpen ? `${id}-option-${activeIndex}` : undefined}
+        aria-valuetext={selectedOption?.label || ''}
+        onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
+        onKeyDown={handleKeyDown}
+      >
+        <span>{selectedOption?.label || ''}</span>
+        <ChevronDown size={15} aria-hidden="true" />
+      </button>
+      {isOpen && createPortal(
+        <div ref={menuRef} className="note-wall-select-menu" id={`${id}-listbox`} role="listbox" aria-label={label}>
+          {options.map((option, index) => (
+            <button
+              type="button"
+              id={`${id}-option-${index}`}
+              className={`note-wall-select-option${index === activeIndex ? ' is-active' : ''}`}
+              role="option"
+              aria-selected={option.value === value}
+              tabIndex={-1}
+              key={option.value || `empty-${index}`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => chooseOption(index)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
 
 function formatAudioTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -2250,32 +2397,52 @@ export default function NoteWall({ boardId = null }) {
                     ))}
                   </div>
                   <form id="mobile-connection-panel" className={`note-wall-link-form is-mobile-tab-${mobileConnectionTab}`} role="tabpanel" aria-labelledby={`mobile-connection-tab-${mobileConnectionTab}`} onSubmit={addConnection}>
-                    <select className="mobile-connection-link" aria-label="Connection start note" value={connectionFrom} onChange={(event) => setConnectionFrom(event.target.value)}>
-                      <option value="">From note…</option>
-                      {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
-                    </select>
-                    <select className="mobile-connection-link" aria-label="Connection end note" value={connectionTo} onChange={(event) => setConnectionTo(event.target.value)}>
-                      <option value="">To note…</option>
-                      {visibleNotes.map((note) => <option key={note.id} value={String(note.id)}>{getWallNoteTitle(note)}</option>)}
-                    </select>
+                    <ConnectionSelect
+                      className="mobile-connection-link"
+                      label="Connection start note"
+                      value={connectionFrom}
+                      options={[{ value: '', label: 'From note…' }, ...visibleNotes.map((note) => ({ value: String(note.id), label: getWallNoteTitle(note) }))]}
+                      onChange={setConnectionFrom}
+                    />
+                    <ConnectionSelect
+                      className="mobile-connection-link"
+                      label="Connection end note"
+                      value={connectionTo}
+                      options={[{ value: '', label: 'To note…' }, ...visibleNotes.map((note) => ({ value: String(note.id), label: getWallNoteTitle(note) }))]}
+                      onChange={setConnectionTo}
+                    />
                     <label className="note-wall-color-control mobile-connection-style">Line color
                       <input aria-label="Connection color" type="color" value={connectionColor} onChange={(event) => setConnectionColor(event.target.value)} />
                     </label>
-                    <select className="mobile-connection-style" aria-label="Connection style" value={connectionStyle} onChange={(event) => setConnectionStyle(event.target.value)}>
-                      <option value="solid">Solid line</option>
-                      <option value="dotted">Dotted line</option>
-                      <option value="dashed">Dashed line</option>
-                    </select>
+                    <ConnectionSelect
+                      className="mobile-connection-style"
+                      label="Connection style"
+                      value={connectionStyle}
+                      options={[
+                        { value: 'solid', label: 'Solid line' },
+                        { value: 'dotted', label: 'Dotted line' },
+                        { value: 'dashed', label: 'Dashed line' },
+                      ]}
+                      onChange={setConnectionStyle}
+                    />
                     <label className="note-wall-inline-option mobile-connection-style">
                       <input type="checkbox" checked={connectionCurved} onChange={(event) => setConnectionCurved(event.target.checked)} />
                       Curved
                     </label>
-                    <select className="mobile-connection-anchor" aria-label="Connection start edge" value={connectionFromAnchor} onChange={(event) => setConnectionFromAnchor(event.target.value)}>
-                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
-                    </select>
-                    <select className="mobile-connection-anchor" aria-label="Connection end edge" value={connectionToAnchor} onChange={(event) => setConnectionToAnchor(event.target.value)}>
-                      {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
-                    </select>
+                    <ConnectionSelect
+                      className="mobile-connection-anchor"
+                      label="Connection start edge"
+                      value={connectionFromAnchor}
+                      options={CONNECTION_ANCHORS.map((anchor) => ({ value: anchor, label: `Start: ${anchor}` }))}
+                      onChange={setConnectionFromAnchor}
+                    />
+                    <ConnectionSelect
+                      className="mobile-connection-anchor"
+                      label="Connection end edge"
+                      value={connectionToAnchor}
+                      options={CONNECTION_ANCHORS.map((anchor) => ({ value: anchor, label: `End: ${anchor}` }))}
+                      onChange={setConnectionToAnchor}
+                    />
                     <button type="submit" className="note-wall-secondary-action mobile-connection-link" disabled={visibleNotes.length < 2}><Link2 size={14} /> Add connection</button>
                     <button type="button" className="note-wall-auto-connect mobile-connection-link" onClick={autoConnectRelated} disabled={!visibleNotes.length || (!visibleTasks.length && visibleNotes.length < 2)} title="Folder links are solid, shared-tag links are dotted, and task-to-note links are dashed. Existing links are kept.">
                       Auto-connect related
@@ -2290,21 +2457,35 @@ export default function NoteWall({ boardId = null }) {
                     <div className="note-wall-selection-control note-wall-selected-line" role="group" aria-label="Selected connection settings">
                       <strong>Selected line</strong>
                       <input className="mobile-selected-style" aria-label="Selected line color" type="color" value={selectedConnection.color || '#a5b4fc'} onChange={(event) => updateSelectedConnection({ color: event.target.value })} />
-                      <select className="mobile-selected-style" aria-label="Selected line style" value={selectedConnection.style || 'solid'} onChange={(event) => updateSelectedConnection({ style: event.target.value })}>
-                        <option value="solid">Solid</option>
-                        <option value="dotted">Dotted</option>
-                        <option value="dashed">Dashed</option>
-                      </select>
+                      <ConnectionSelect
+                        className="mobile-selected-style"
+                        label="Selected line style"
+                        value={selectedConnection.style || 'solid'}
+                        options={[
+                          { value: 'solid', label: 'Solid' },
+                          { value: 'dotted', label: 'Dotted' },
+                          { value: 'dashed', label: 'Dashed' },
+                        ]}
+                        onChange={(style) => updateSelectedConnection({ style })}
+                      />
                       <label className="note-wall-inline-option mobile-selected-style">
                         <input aria-label="Selected line curved" type="checkbox" checked={selectedConnection.curved !== false} onChange={(event) => updateSelectedConnection({ curved: event.target.checked })} />
                         Curved
                       </label>
-                      <select className="mobile-selected-anchor" aria-label="Selected line start edge" value={selectedConnection.fromAnchor || 'right'} onChange={(event) => updateSelectedConnection({ fromAnchor: event.target.value })}>
-                        {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>Start: {anchor}</option>)}
-                      </select>
-                      <select className="mobile-selected-anchor" aria-label="Selected line end edge" value={selectedConnection.toAnchor || 'left'} onChange={(event) => updateSelectedConnection({ toAnchor: event.target.value })}>
-                        {CONNECTION_ANCHORS.map((anchor) => <option key={anchor} value={anchor}>End: {anchor}</option>)}
-                      </select>
+                      <ConnectionSelect
+                        className="mobile-selected-anchor"
+                        label="Selected line start edge"
+                        value={selectedConnection.fromAnchor || 'right'}
+                        options={CONNECTION_ANCHORS.map((anchor) => ({ value: anchor, label: `Start: ${anchor}` }))}
+                        onChange={(fromAnchor) => updateSelectedConnection({ fromAnchor })}
+                      />
+                      <ConnectionSelect
+                        className="mobile-selected-anchor"
+                        label="Selected line end edge"
+                        value={selectedConnection.toAnchor || 'left'}
+                        options={CONNECTION_ANCHORS.map((anchor) => ({ value: anchor, label: `End: ${anchor}` }))}
+                        onChange={(toAnchor) => updateSelectedConnection({ toAnchor })}
+                      />
                       <button className="mobile-selected-done" type="button" onClick={() => setSelectedConnectionId(null)} aria-label="Deselect line">Done</button>
                     </div>
                   )}
