@@ -74,6 +74,34 @@ describe('NoteWall', () => {
     expect(screen.getByRole('tab', { name: 'Anchors' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('switches selected-line settings with mobile tabs instead of showing every control at once', () => {
+    storageManager.saveNoteWall({
+      positions: { 1: { x: 20, y: 20 }, 2: { x: 340, y: 20 } },
+      connections: [{
+        id: 'mobile-line',
+        from: '1',
+        to: '2',
+        color: '#a5b4fc',
+        style: 'dotted',
+        curved: true,
+        fromAnchor: 'right',
+        toAnchor: 'left',
+      }],
+    });
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByText(/Connections/));
+    fireEvent.click(screen.getByRole('button', { name: 'Select connection from Idea one to Idea two' }));
+
+    const tools = document.querySelector('.note-wall-connection-tools');
+    expect(tools).toHaveClass('has-selected-connection');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Style' }));
+    expect(tools).toHaveClass('is-mobile-tab-style');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Anchors' }));
+    expect(tools).toHaveClass('is-mobile-tab-anchors');
+  });
+
   it('uses and updates the landing page theme preference', () => {
     render(<MemoryRouter><NoteWall /></MemoryRouter>);
 

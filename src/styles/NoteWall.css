@@ -2413,15 +2413,16 @@
     padding-top: 0.4rem;
   }
   .note-wall-selected-line > strong { display: none; }
-  .note-wall-connection-tools.has-selected-connection .note-wall-selected-line {
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-style .note-wall-selected-line,
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-selected-line {
     display: grid;
     grid-column: 1 / -1;
   }
-  .note-wall-connection-tools.has-selected-connection .note-wall-link-form.is-mobile-tab-style > .mobile-connection-style,
-  .note-wall-connection-tools.has-selected-connection .note-wall-link-form.is-mobile-tab-anchors > .mobile-connection-anchor { display: none; }
-  .note-wall-connection-tools.has-selected-connection .note-wall-selected-line .mobile-selected-style { display: inline-flex; }
-  .note-wall-connection-tools.has-selected-connection .note-wall-selected-line .mobile-selected-anchor { display: block; }
-  .note-wall-connection-tools.has-selected-connection .note-wall-selected-line .mobile-selected-done { display: inline-flex; grid-column: 1 / -1; }
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-style .note-wall-link-form > .mobile-connection-style,
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-link-form > .mobile-connection-anchor { display: none; }
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-style .note-wall-selected-line .mobile-selected-style { display: inline-flex; }
+  .note-wall-connection-tools.has-selected-connection.is-mobile-tab-anchors .note-wall-selected-line .mobile-selected-anchor { display: block; }
+  .note-wall-connection-tools.has-selected-connection .note-wall-selected-line .mobile-selected-done { display: none; }
   .note-wall-connection-tools.has-selected-connection .note-wall-selected-line > input[type="color"] { justify-self: start; }
 }
 

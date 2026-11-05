@@ -2202,7 +2202,7 @@ export default function NoteWall({ boardId = null }) {
               </button>
             </div>}
             {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
-              <details className={`note-wall-connection-tools${selectedConnection ? ' has-selected-connection' : ''}`} ref={connectionPanelRef} onToggle={positionConnectionPanel}>
+              <details className={`note-wall-connection-tools${selectedConnection ? ' has-selected-connection' : ''} is-mobile-tab-${mobileConnectionTab}`} ref={connectionPanelRef} onToggle={positionConnectionPanel}>
                 <summary aria-label="Connections"><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}<ChevronDown size={13} /></summary>
                 <div className="note-wall-connection-panel">
                   <div className="note-wall-connection-panel-heading">
