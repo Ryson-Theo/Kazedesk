@@ -671,6 +671,9 @@ export default function NoteWall({ boardId = null }) {
   const [wallSaveStatus, setWallSaveStatus] = useState('Changes save automatically in this browser');
   const [attachmentStatus, setAttachmentStatus] = useState('');
   const [webClipStatus, setWebClipStatus] = useState('');
+  const [editingAttachment, setEditingAttachment] = useState(null);
+  const [attachmentNameDraft, setAttachmentNameDraft] = useState('');
+  const [attachmentNameError, setAttachmentNameError] = useState('');
   const [pendingDeleteItem, setPendingDeleteItem] = useState(null);
   const [showWebClipperSetup, setShowWebClipperSetup] = useState(false);
   const [showAddLinkDialog, setShowAddLinkDialog] = useState(false);
@@ -1064,6 +1067,38 @@ export default function NoteWall({ boardId = null }) {
     } finally {
       setIsAddingAttachment(false);
     }
+  };
+
+  const openAttachmentRename = (attachment) => {
+    setEditingAttachment(attachment);
+    setAttachmentNameDraft(attachment.name);
+    setAttachmentNameError('');
+  };
+
+  const closeAttachmentRename = () => {
+    setEditingAttachment(null);
+    setAttachmentNameDraft('');
+    setAttachmentNameError('');
+  };
+
+  const renameAttachment = (event) => {
+    event.preventDefault();
+    if (!editingAttachment) return;
+    const name = attachmentNameDraft.trim();
+    if (!name) {
+      setAttachmentNameError('Enter a name for this file.');
+      return;
+    }
+
+    setWall((current) => ({
+      ...current,
+      attachments: current.attachments.map((attachment) => (
+        String(attachment.id) === String(editingAttachment.id)
+          ? { ...attachment, name }
+          : attachment
+      )),
+    }));
+    closeAttachmentRename();
   };
 
   const handleAttachmentSelection = async (event) => {
@@ -2762,20 +2797,28 @@ export default function NoteWall({ boardId = null }) {
                   aria-label={`${attachment.mediaType} attachment: ${attachment.name}`}
                   style={{ left: position.x, top: position.y, width: dimensions.width, height: dimensions.height }}
                 >
-                  <button
-                    type="button"
-                    className="note-wall-attachment-move"
-                    aria-label={`Move attachment ${attachment.name}`}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const point = getBoardPoint(event);
-                      gestureRef.current = { type: 'move-node', nodeType: 'attachment', id: attachment.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
-                    }}
-                  >
-                    <span aria-hidden="true">⠿</span>
-                    <span className="note-wall-attachment-name">{attachment.name}</span>
-                  </button>
+                  <div className="note-wall-attachment-heading">
+                    <button
+                      type="button"
+                      className="note-wall-attachment-move"
+                      aria-label={`Move attachment ${attachment.name}`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const point = getBoardPoint(event);
+                        gestureRef.current = { type: 'move-node', nodeType: 'attachment', id: attachment.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
+                      }}
+                    ><span aria-hidden="true">⠿</span></button>
+                    <span className="note-wall-attachment-name" title={attachment.name}>{attachment.name}</span>
+                    <button
+                      type="button"
+                      className="note-wall-attachment-rename"
+                      aria-label={`Rename attachment ${attachment.name}`}
+                      title="Rename file"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() => openAttachmentRename(attachment)}
+                    ><Pencil size={12} /></button>
+                  </div>
                   <button
                     type="button"
                     className="note-wall-attachment-remove"
@@ -3180,6 +3223,30 @@ export default function NoteWall({ boardId = null }) {
               </button>
               <button type="button" className="note-wall-cancel-tidy" onClick={() => setPendingDeleteItem(null)}>Cancel</button>
             </div>
+          </section>
+        </div>
+      )}
+      {editingAttachment && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={closeAttachmentRename}>
+          <section className="note-wall-modal note-wall-board-item-dialog" role="dialog" aria-modal="true" aria-labelledby="attachment-rename-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="note-wall-modal-close" aria-label="Close rename file dialog" onClick={closeAttachmentRename}><X size={17} /></button>
+            <h2 id="attachment-rename-title">Rename file</h2>
+            <p>The original file stays unchanged in browser storage.</p>
+            <form className="note-wall-add-link-form" onSubmit={renameAttachment}>
+              <label htmlFor="attachment-name">File name</label>
+              <input
+                id="attachment-name"
+                autoFocus
+                maxLength={255}
+                value={attachmentNameDraft}
+                onChange={(event) => { setAttachmentNameDraft(event.target.value); setAttachmentNameError(''); }}
+              />
+              {attachmentNameError && <p className="note-wall-add-link-error" role="alert">{attachmentNameError}</p>}
+              <div className="note-wall-add-link-actions">
+                <button type="submit" className="note-wall-secondary-action"><Save size={14} /> Save name</button>
+                <button type="button" className="note-wall-cancel-tidy" onClick={closeAttachmentRename}>Cancel</button>
+              </div>
+            </form>
           </section>
         </div>
       )}

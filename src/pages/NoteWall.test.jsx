@@ -190,6 +190,43 @@ describe('NoteWall', () => {
     }
   });
 
+  it('renames image, PDF, and audio attachments without replacing their files', async () => {
+    noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
+    const attachments = [
+      { id: 'image-file', name: 'sketch.png', mimeType: 'image/png', mediaType: 'image', size: 12 },
+      { id: 'pdf-file', name: 'notes.pdf', mimeType: 'application/pdf', mediaType: 'pdf', size: 18 },
+      { id: 'audio-file', name: 'recording.webm', mimeType: 'audio/webm', mediaType: 'audio', size: 24 },
+    ];
+    storageManager.saveNoteWall({ attachments });
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    for (const [originalName, renamedName] of [
+      ['sketch.png', 'concept.png'],
+      ['notes.pdf', 'meeting-notes.pdf'],
+      ['recording.webm', 'voice memo.webm'],
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name: `Rename attachment ${originalName}` }));
+      const nameInput = screen.getByRole('textbox', { name: 'File name' });
+      fireEvent.change(nameInput, { target: { value: '   ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Enter a name for this file.');
+
+      fireEvent.change(nameInput, { target: { value: renamedName } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+      await waitFor(() => {
+        expect(storageManager.getNoteWall().attachments.find((attachment) => attachment.name === renamedName)).toBeDefined();
+      });
+      expect(screen.getByRole('button', { name: `Rename attachment ${renamedName}` })).toBeInTheDocument();
+    }
+
+    expect(storageManager.getNoteWall().attachments).toEqual([
+      { ...attachments[0], name: 'concept.png' },
+      { ...attachments[1], name: 'meeting-notes.pdf' },
+      { ...attachments[2], name: 'voice memo.webm' },
+    ]);
+    expect(noteWallMedia.saveWallAttachment).not.toHaveBeenCalled();
+  });
+
   it('records a voice note and adds playable audio to the wall', async () => {
     noteWallMedia.saveWallAttachment.mockReset().mockResolvedValue(undefined);
     noteWallMedia.getWallAttachment.mockReset().mockResolvedValue(new Blob(['voice note'], { type: 'audio/webm' }));

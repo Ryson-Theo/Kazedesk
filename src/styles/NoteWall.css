@@ -1363,12 +1363,22 @@
 
 .note-wall-attachment:focus-within { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
 
-.note-wall-attachment-move {
+.note-wall-attachment-heading {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0 2.2rem 0 0;
+  gap: 0.3rem;
+  padding-right: 4rem;
+}
+
+.note-wall-attachment-move {
+  display: flex;
+  width: 18px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--lp-muted);
@@ -1380,8 +1390,23 @@
 }
 
 .note-wall-attachment-move:active { cursor: grabbing; }
-.note-wall-attachment-move > span:first-child { flex: 0 0 auto; font-size: 1rem; line-height: 0.8; }
-.note-wall-attachment-name { overflow: hidden; color: var(--lp-text); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.note-wall-attachment-move > span:first-child { font-size: 1rem; line-height: 0.8; }
+.note-wall-attachment-name { min-width: 0; flex: 1; overflow: hidden; color: var(--lp-text); font-size: 0.65rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.note-wall-attachment-rename {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--lp-line);
+  border-radius: 6px;
+  background: var(--lp-surface);
+  color: var(--lp-muted);
+  cursor: pointer;
+}
+.note-wall-attachment-rename:hover { border-color: var(--lp-accent); color: var(--lp-accent); }
+.note-wall-attachment-rename:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
 
 .note-wall-attachment-remove {
   position: absolute;
