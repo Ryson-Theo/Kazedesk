@@ -1020,10 +1020,12 @@ describe('NoteWall', () => {
     expect(savedCard.querySelector('.note-wall-note-preview h2')).toHaveTextContent('Key idea');
     expect(savedCard.querySelector('.note-wall-note-preview strong')).toHaveTextContent('Keep this');
     expect(savedCard.querySelector('.note-wall-note-preview img')).toBeNull();
+    expect(savedCard.querySelector('.note-wall-note-view-content')).toBeNull();
 
     fireEvent.doubleClick(screen.getByRole('article', { name: 'Select Reading notes card to change its color' }));
     expect(screen.getByRole('dialog', { name: 'Reading notes' })).toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: 'Reading notes' }).querySelector('.note-wall-markdown-content h2')).toHaveTextContent('Key idea');
+    const noteDialog = screen.getByRole('dialog', { name: 'Reading notes' });
+    expect(noteDialog.querySelector('.note-wall-note-view-content .note-wall-markdown-content h2')).toHaveTextContent('Key idea');
     const noteCard = screen.getByRole('article', { name: 'Select Reading notes card to change its color' });
     fireEvent.click(noteCard.querySelector('summary'));
     expect(noteCard.querySelector('[role="menu"]')).toBeInTheDocument();

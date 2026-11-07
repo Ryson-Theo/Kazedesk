@@ -3173,13 +3173,15 @@ export default function NoteWall({ boardId = null }) {
                 }}
               />}
             </header>
-            {boardId && selectedNote.markdown !== false
-              ? <MarkdownContent
-                  source={selectedNote.text || 'This note has no text.'}
-                  pinnedLinks={selectedNote.pinnedLinks || []}
-                  onPinLink={boardId ? (link) => togglePinnedMarkdownLink(selectedNote.id, link) : undefined}
-                />
-              : <p>{getNotePlainText(selectedNote) || 'This note has no text.'}</p>}
+            <div className="note-wall-note-view-content">
+              {boardId && selectedNote.markdown !== false
+                ? <MarkdownContent
+                    source={selectedNote.text || 'This note has no text.'}
+                    pinnedLinks={selectedNote.pinnedLinks || []}
+                    onPinLink={boardId ? (link) => togglePinnedMarkdownLink(selectedNote.id, link) : undefined}
+                  />
+                : <p>{getNotePlainText(selectedNote) || 'This note has no text.'}</p>}
+            </div>
             <div className="note-wall-card-meta"><span>{selectedNote.category || 'Inbox'}</span>{(selectedNote.tags || []).map((tag) => <span key={tag}>#{tag}</span>)}</div>
           </section>
         </div>

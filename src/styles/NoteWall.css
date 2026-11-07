@@ -20,7 +20,29 @@
   font-family: "Manrope", "Avenir Next", sans-serif;
   font-size: 15px;
   line-height: 1.6;
+  -webkit-user-select: none;
+  user-select: none;
   transition: background-color 180ms ease, color 180ms ease;
+}
+
+.note-wall-page *,
+.note-wall-page *::before,
+.note-wall-page *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.note-wall-page input,
+.note-wall-page textarea,
+.note-wall-page [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-wall-note-view-content,
+.note-wall-note-view-content * {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .note-wall-note-actions-menu {
