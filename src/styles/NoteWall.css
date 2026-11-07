@@ -10,6 +10,8 @@
   --lp-soft: #717a72;
   --lp-accent: #b6d2ad;
   --lp-accent-ink: #172016;
+  --lp-scrollbar-thumb: color-mix(in srgb, var(--lp-accent) 28%, var(--lp-line));
+  --lp-scrollbar-thumb-hover: var(--lp-accent);
   display: flex;
   width: 100%;
   height: 100vh;
@@ -115,6 +117,37 @@
   --lp-soft: #7a857e;
   --lp-accent: #3d694a;
   --lp-accent-ink: #f5f6f0;
+}
+
+.note-wall-page,
+.note-wall-page * {
+  scrollbar-color: var(--lp-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.note-wall-page::-webkit-scrollbar,
+.note-wall-page *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.note-wall-page::-webkit-scrollbar-track,
+.note-wall-page *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.note-wall-page::-webkit-scrollbar-thumb,
+.note-wall-page *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--lp-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+.note-wall-page::-webkit-scrollbar-thumb:hover,
+.note-wall-page *::-webkit-scrollbar-thumb:hover {
+  background: var(--lp-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .note-wall-toolbar {
