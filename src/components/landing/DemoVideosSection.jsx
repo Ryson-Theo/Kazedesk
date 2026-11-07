@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart3, CheckSquare, Settings2, StickyNote, Timer, Bird } from "lucide-react";
+import { BarChart3, CheckSquare, Play, Settings2, StickyNote, Timer, Bird } from "lucide-react";
 import { Copyright } from "lucide-react";
 
 const DEMOS = [
@@ -13,6 +13,7 @@ const DEMOS = [
 
 export default function DemoVideosSection() {
   const [selectedId, setSelectedId] = useState("timer");
+  const [hasStarted, setHasStarted] = useState(false);
   const selected = DEMOS.find((demo) => demo.id === selectedId) || DEMOS[0];
 
   return (
@@ -24,10 +25,25 @@ export default function DemoVideosSection() {
       </div>
       <div className="demo-videos-layout">
         <div className="demo-video-player">
-          <video key={selected.id} autoPlay muted loop playsInline preload="metadata" aria-label={`${selected.title} product demonstration`}>
-            <source src={selected.source} type="video/mp4" />
-            Your browser does not support embedded video.
-          </video>
+          {hasStarted ? (
+            <video key={selected.id} autoPlay muted loop playsInline preload="none" aria-label={`${selected.title} product demonstration`}>
+              <source src={selected.source} type="video/mp4" />
+              Your browser does not support embedded video.
+            </video>
+          ) : (
+            <div className="demo-video-placeholder">
+              <button
+                type="button"
+                className="demo-video-play"
+                aria-label={`Play ${selected.title} demo`}
+                onClick={() => setHasStarted(true)}
+              >
+                <Play size={22} fill="currentColor" />
+                <span>Play demo</span>
+              </button>
+              <span className="demo-video-load-note">Video loads only when you choose to play</span>
+            </div>
+          )}
           <div className="demo-video-caption">
             <span className="demo-video-caption-icon"><selected.icon size={17} /></span>
             <div><h3>{selected.title}</h3><p>{selected.description}</p></div>
@@ -39,7 +55,10 @@ export default function DemoVideosSection() {
               className={`demo-video-option ${selectedId === id ? "is-active" : ""}`}
               type="button"
               key={id}
-              onClick={() => setSelectedId(id)}
+              onClick={() => {
+                setSelectedId(id);
+                setHasStarted(true);
+              }}
               aria-pressed={selectedId === id}
             >
               <span className="demo-video-option-icon"><Icon size={17} /></span>

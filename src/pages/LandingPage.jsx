@@ -24,7 +24,7 @@ export default function LandingPage() {
   return (
     <main className={`landing-page landing-theme-${theme}`}>
       <LandingNavbar theme={theme} onToggleTheme={toggleTheme} />
-      <LandingHero />
+      <LandingHero theme={theme} />
       <FeatureGrid />
       <GifDropSection />
       <DemoVideosSection />
