@@ -1184,6 +1184,10 @@
 .note-wall-attachment:focus-within .note-wall-connect-handle,
 .note-wall-connect-handle:focus-visible { opacity: 1; }
 
+@media (hover: none) {
+  .note-wall-connect-handle { opacity: 1; }
+}
+
 .note-wall-connect-handle:hover { transform: scale(1.2); background: var(--lp-accent); }
 .note-wall-connect-handle.is-top { top: -7px; left: calc(50% - 7px); }
 .note-wall-connect-handle.is-right { top: calc(50% - 7px); right: -7px; }
