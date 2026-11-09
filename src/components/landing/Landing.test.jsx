@@ -3,11 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LandingHero from "./LandingHero";
 import DemoVideosSection from "./DemoVideosSection";
-import darkHeroImage from "../../assets/hero images/dark 1 hero.png";
-import lightHeroImage from "../../assets/hero images/light 1 hero.png";
+import darkHeroImage from "../../assets/hero images/dark.png";
+import lightHeroImage from "../../assets/hero images/light.png";
 import { OpenSourceSection } from "./LandingSections";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
@@ -64,7 +65,7 @@ describe("landing page", () => {
     expect(screen.getByAltText(/calm workspace/i)).toHaveAttribute("src", lightHeroImage);
   });
 
-  it("does not add floating UI panels to the hero", () => {
+  it("renders a static hero without dot grid or scroll effects", () => {
     render(
       <MemoryRouter>
         <LandingHero />
@@ -72,109 +73,36 @@ describe("landing page", () => {
     );
 
     expect(document.querySelector(".hero-ui-panels")).toBeNull();
-    expect(document.querySelector(".landing-hero")).toHaveStyle({
-      "--hero-image-inset": "50%",
-      "--hero-solid-title-opacity": "0",
-    });
-    expect(document.querySelector(".hero-story")).toHaveAttribute("inert");
+    expect(document.querySelector(".hero-dot-grid")).toBeNull();
+    expect(document.querySelector(".hero-scroll-cue")).toBeNull();
+    expect(document.querySelectorAll(".hero-glass-panel")).toHaveLength(1);
+    expect(document.querySelector(".hero-glass-panel")).toHaveAttribute("aria-hidden", "true");
+    expect(document.querySelector(".landing-hero")).not.toHaveAttribute("style");
     expect(screen.getByRole("button", { name: /start focusing/i })).toBeInTheDocument();
-    expect(document.querySelector(".hero-dot-grid")).toBeInTheDocument();
   });
 
-  it("reveals the image and supporting content as the hero scrolls", () => {
-    vi.stubGlobal("requestAnimationFrame", (callback) => {
-      callback();
-      return 1;
-    });
+  it("shows a left-aligned launch button with a centered arrow and no circular text", () => {
     render(
       <MemoryRouter>
         <LandingHero />
       </MemoryRouter>
     );
 
-    const hero = document.querySelector(".landing-hero");
-    Object.defineProperty(hero, "offsetHeight", { configurable: true, value: 2000 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 });
-    vi.stubGlobal("scrollY", 360);
-    hero.getBoundingClientRect = () => ({ top: -360 });
-    fireEvent.scroll(window);
-
-    expect(hero).toHaveStyle({
-      "--hero-image-inset": "25%",
-      "--hero-solid-title-opacity": "0.5",
-    });
-  });
-
-  it("fully reveals the image before the hero releases on continued scroll", () => {
-    vi.stubGlobal("requestAnimationFrame", (callback) => {
-      callback();
-      return 1;
-    });
-    render(
-      <MemoryRouter>
-        <LandingHero />
-      </MemoryRouter>
+    const launchButton = screen.getByRole("button", { name: /start focusing/i });
+    expect(launchButton.querySelector(".hero-launch-arrow svg")).toBeInTheDocument();
+    expect(launchButton.querySelector(".hero-launch-ring")).toBeNull();
+    expect(launchButton.querySelectorAll(".hero-launch-glyph")).toHaveLength(0);
+    expect(screen.getByText("Make room for deep focus")).toBeInTheDocument();
+    expect(document.querySelector(".hero-description").textContent).toBe(
+      "Designed around the way you think and work. A little more clarity, a little less chaos, and a better way to spend your day. Bring your tasks, notes, ideas, and everyday essentials together in one thoughtful space that feels natural, keeps you in flow, and helps you make room for what matters."
     );
-
-    const hero = document.querySelector(".landing-hero");
-    Object.defineProperty(hero, "offsetHeight", { configurable: true, value: 2000 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 });
-    vi.stubGlobal("scrollY", 950);
-    hero.getBoundingClientRect = () => ({ top: -950 });
-    fireEvent.scroll(window);
-
-    expect(hero).toHaveStyle({
-      "--hero-image-inset": "0%",
-      "--hero-image-radius": "0px",
-      "--hero-title-left": "1%",
-      "--hero-title-top": "97%",
-      "--hero-title-translate-y": "-100%",
-      "--hero-title-scale": "1.12",
-      "--hero-solid-title-opacity": "1",
-      "--hero-story-opacity": "1",
-    });
-    expect(document.querySelector(".hero-story")).not.toHaveAttribute("inert");
-  });
-
-  it("keeps the mobile wordmark bottom-left with the call to action on the right", () => {
-    vi.stubGlobal("requestAnimationFrame", (callback) => {
-      callback();
-      return 1;
-    });
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
-    render(
-      <MemoryRouter>
-        <LandingHero />
-      </MemoryRouter>
-    );
-
-    const hero = document.querySelector(".landing-hero");
-    Object.defineProperty(hero, "offsetHeight", { configurable: true, value: 2000 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 });
-    hero.getBoundingClientRect = () => ({ top: -950 });
-    fireEvent.scroll(window);
-
-    expect(hero).toHaveStyle({
-      "--hero-title-left": "5%",
-      "--hero-title-top": "62%",
-      "--hero-title-scale": "0.55",
-      "--hero-story-opacity": "1",
-    });
-  });
-
-  it("shows the complete hero without scrolling when reduced motion is requested", () => {
-    vi.stubGlobal("matchMedia", () => ({ matches: true }));
-    render(
-      <MemoryRouter>
-        <LandingHero />
-      </MemoryRouter>
-    );
-
-    expect(document.querySelector(".landing-hero")).toHaveStyle({
-      "--hero-image-inset": "0%",
-      "--hero-solid-title-opacity": "1",
-      "--hero-story-opacity": "1",
-    });
+    expect(Array.from(document.querySelectorAll(".hero-description > span"), (line) => line.textContent)).toEqual([
+      "Designed around the way you think and work. A little more clarity, a little",
+      "less chaos, and a better way to spend your day. Bring your tasks, notes,",
+      "ideas, and everyday essentials together in one thoughtful space that feels",
+      "natural, keeps you in flow, and helps you make room for what matters.",
+    ]);
+    expect(launchButton).toBeInTheDocument();
   });
 
   it("shows the repository, license, and contribution information", () => {
