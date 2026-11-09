@@ -103,8 +103,6 @@ Kazedesk is a client-side React application and can be deployed to a static host
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
 
-For Cloudflare Pages deployments without API tokens, connect the GitHub repository through the Cloudflare dashboard's **Workers & Pages** Git integration. Set the production branch to `main`, the build command to `npm run build`, and the output directory to `dist`. Once connected, pushes to `main` deploy automatically. The GitHub Actions workflow in this repository runs CI checks only; it does not publish the site.
-
 Configure the host to serve `index.html` for application routes such as `/dashboard` (SPA fallback). A root-domain deployment works with the default Vite configuration. If deploying beneath a repository subpath, configure Vite's `base` option and the router's basename for that path.
 
 Docker is not required for the current static application. See [ARCHITECTURE.md](./ARCHITECTURE.md) for its runtime boundaries and deployment considerations.
