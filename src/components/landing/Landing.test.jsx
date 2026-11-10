@@ -5,7 +5,7 @@ import LandingHero from "./LandingHero";
 import DemoVideosSection from "./DemoVideosSection";
 import darkHeroImage from "../../assets/hero images/dark.png";
 import lightHeroImage from "../../assets/hero images/light.png";
-import { OpenSourceSection } from "./LandingSections";
+import { FeatureGrid, OpenSourceSection } from "./LandingSections";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -103,6 +103,36 @@ describe("landing page", () => {
       "natural, keeps you in flow, and helps you make room for what matters.",
     ]);
     expect(launchButton).toBeInTheDocument();
+  });
+
+  it("shows the everyday features in an open folder without the scrolling image rail", () => {
+    const { container } = render(<FeatureGrid />);
+
+    expect(container.querySelector(".folder-root")).toHaveAttribute("data-open");
+    expect(container.querySelectorAll(".folder-doc")).toHaveLength(4);
+    expect(screen.getByText("Focus timer")).toBeInTheDocument();
+    expect(screen.getByText("Tasks & reminders")).toBeInTheDocument();
+    expect(screen.getByText("Notes & NoteMap")).toBeInTheDocument();
+    expect(container.querySelectorAll(".folder-doc-checklist")).toHaveLength(4);
+    expect(container.querySelectorAll(".folder-doc-checklist li")).toHaveLength(12);
+    expect(screen.getByText("Timed breaks")).toBeInTheDocument();
+    expect(screen.getByText("Visual maps")).toBeInTheDocument();
+    expect(screen.getByText("Your data stays yours")).toBeInTheDocument();
+    expect(container.querySelector(".feature-rail-viewport")).toBeNull();
+    expect(container.querySelector(".feature-card-visual")).toBeNull();
+    expect(container.querySelector(".folder-doc-line")).toBeNull();
+    expect(container.querySelector(".folder-doc-block")).toBeNull();
+    expect(container.querySelector(".features-ribbon")).toBeInTheDocument();
+    expect(container.querySelector(".features-ribbon .text-loop-svg")).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("FOCUS")
+    );
+    expect(screen.getByText("Set a focus rhythm and make space for the work in front of you.")).toBeInTheDocument();
+    expect(screen.getByText("Click the folder to open or close it")).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector(".folder-stage"));
+    expect(container.querySelector(".features-folder")).toHaveClass("is-straight");
+    expect(screen.queryByText("Click the folder to open or close it")).not.toBeInTheDocument();
   });
 
   it("shows the repository, license, and contribution information", () => {

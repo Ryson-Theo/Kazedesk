@@ -1,23 +1,29 @@
-import PipIcon from './PipIcon';
+import LatticeLoader from './LatticeLoader';
 import './WorkspaceLoading.css';
 
-export default function WorkspaceLoading({ label = 'Loading workspace' }) {
+export default function WorkspaceLoading({ label = 'Launching', isDone = false }) {
   return (
-    <div className="workspace-loading" role="status" aria-live="polite">
-      <div className="workspace-loading-card">
-        <div className="workspace-loading-brand">
-          <span className="workspace-loading-mascot">
-            <PipIcon size={64} />
-          </span>
-          <span className="workspace-loading-name">Kazedesk</span>
-        </div>
-        <div className="workspace-loading-indicator" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <span className="workspace-loading-label">{label}</span>
-      </div>
+    <div className="workspace-loading" aria-busy="true">
+      <LatticeLoader
+        status={isDone ? 'done' : 'working'}
+        label={label}
+        doneLabel="Workspace Ready"
+        errorLabel="Failed To Load "
+        pattern="orbit"
+        grid={3}
+        shape="round"
+        doneColor="#22c55e"
+        errorColor="#ef4444"
+        cellSize={6}
+        gap={2}
+        fontSize={14}
+        step={90}
+        idleOpacity={0.15}
+        glow={false}
+        glowColor="#b2e3a1"
+        showTimer
+        color="#95c482"
+      />
     </div>
   );
 }

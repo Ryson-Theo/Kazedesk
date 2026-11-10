@@ -1,26 +1,32 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BarChart3, CheckCircle2, CloudSun, Code2, Image, LockKeyhole, Music2, Network, StickyNote, Timer, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Code2, Network, StickyNote, Users } from "lucide-react";
 import { Link } from "react-router-dom";
-import analyticsImage from "../../assets/features/analytics.png";
-import notesImage from "../../assets/features/notes.png";
-import playlistImage from "../../assets/features/playlist.png";
-import privateImage from "../../assets/features/private.png";
-import tasksImage from "../../assets/features/tasks.jpg";
-import timerImage from "../../assets/features/timer.png";
-import weatherImage from "../../assets/features/weather.png";
-import workspaceImage from "../../assets/features/workspace.png";
 import { LANDING_LINKS } from "./landingLinks";
 import GithubIcon from "./GithubIcon";
+import Folder from "./Folder";
+import TextLoop from "./TextLoop";
 
-const FEATURES = [
-  [Timer, "01", "Focus timer", "Choose a focus length and break rhythm that works for you.", timerImage],
-  [CloudSun, "02", "Weather & time", "Keep local conditions and your chosen clock close by.", weatherImage],
-  [CheckCircle2, "03", "Tasks & reminders", "Prioritize your next steps and get timely reminders.", tasksImage],
-  [StickyNote, "04", "Notes that stay handy", "Write titled notes, format key ideas, and arrange your list.", notesImage],
-  [Music2, "05", "YouTube playlists", "Keep a playlist alongside the rest of your workspace.", playlistImage],
-  [Image, "06", "Your own workspace", "Choose a background and tune the look of your widgets.", workspaceImage],
-  [BarChart3, "07", "Focus analytics", "See saved focus time and completed sessions over time.", analyticsImage],
-  [LockKeyhole, "08", "Private by design", "Your tasks, notes, and history stay in your browser.", privateImage],
+const FOLDER_FEATURES = [
+  {
+    title: "Focus timer",
+    description: "Set a focus rhythm and make space for the work in front of you.",
+    checklist: ["Focus sessions", "Timed breaks", "Session history"],
+  },
+  {
+    title: "Tasks & reminders",
+    description: "Keep priorities and the next small steps close at hand.",
+    checklist: ["Priority lists", "Due dates", "Reminders"],
+  },
+  {
+    title: "Notes & NoteMap",
+    description: "Capture quick thoughts or connect ideas into a visual map.",
+    checklist: ["Quick notes", "Linked ideas", "Visual maps"],
+  },
+  {
+    title: "Private by design",
+    description: "Your tasks, notes, and history stay saved in this browser.",
+    checklist: ["Saved in browser", "No account needed", "Your data stays yours"],
+  },
 ];
 
 const FAQS = [
@@ -42,96 +48,66 @@ const FEATURE_SHOWCASES = [
   },
 ];
 
-export function FeatureGrid() {
-  const sectionRef = useRef(null);
-  const stageRef = useRef(null);
-  const viewportRef = useRef(null);
-  const trackRef = useRef(null);
-
-  useEffect(() => {
-    const section = sectionRef.current;
-    const stage = stageRef.current;
-    const viewport = viewportRef.current;
-    const track = trackRef.current;
-    const cards = Array.from(track.children);
-    const swipeLayout = window.matchMedia("(max-width: 720px), (prefers-reduced-motion: reduce)");
-    let frame = null;
-
-    const updateRail = () => {
-      frame = null;
-      if (swipeLayout.matches) {
-        section.style.height = "";
-        track.style.transform = "";
-        cards.forEach((card) => {
-          card.style.removeProperty("--card-tilt");
-          card.style.removeProperty("--card-scale");
-          card.style.removeProperty("--card-opacity");
-        });
-        return;
-      }
-
-      if (viewport.scrollLeft !== 0) viewport.scrollLeft = 0;
-      const travel = Math.max(0, track.scrollWidth - viewport.clientWidth);
-      const stageHeight = stage.offsetHeight;
-      const stickyTop = Number.parseFloat(window.getComputedStyle(stage).top) || 0;
-      section.style.height = `${stageHeight + travel + stickyTop}px`;
-
-      const sectionTop = section.getBoundingClientRect().top + window.scrollY;
-      const scrollRange = travel + stickyTop;
-      const progress = travel === 0 ? 0 : Math.min(1, Math.max(0, (window.scrollY - sectionTop + stickyTop) / scrollRange));
-      track.style.transform = `translate3d(${-travel * progress}px, 0, 0)`;
-
-      const trackLeft = track.getBoundingClientRect().left;
-      const viewportCenter = viewport.getBoundingClientRect().left + viewport.clientWidth / 2;
-      cards.forEach((card) => {
-        const cardCenter = trackLeft + card.offsetLeft + card.offsetWidth / 2;
-        const distance = (cardCenter - viewportCenter) / (viewport.clientWidth / 2);
-        const limitedDistance = Math.min(1.2, Math.max(-1.2, distance));
-        const sideDistance = Math.min(1, Math.abs(distance));
-        card.style.setProperty("--card-tilt", `${-limitedDistance * 25}deg`);
-        card.style.setProperty("--card-scale", `${1 - sideDistance * 0.12}`);
-        card.style.setProperty("--card-opacity", `${1 - sideDistance * 0.24}`);
-      });
-    };
-
-    const scheduleUpdate = () => {
-      if (frame === null) frame = window.requestAnimationFrame(updateRail);
-    };
-
-    updateRail();
-    window.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", scheduleUpdate);
-    swipeLayout.addEventListener("change", scheduleUpdate);
-
-    return () => {
-      window.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-      swipeLayout.removeEventListener("change", scheduleUpdate);
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, []);
+export function FeatureGrid({ theme = "dark" }) {
+  const [hasOpenedFolder, setHasOpenedFolder] = useState(false);
 
   return (
-    <section className="features-section" id="features" ref={sectionRef}>
-      <div className="feature-stage" ref={stageRef}>
-        <div className="section-heading">
+    <section className="features-section" id="features">
+      <TextLoop
+        className="features-ribbon"
+        text="FOCUS   ✦  PLAN  ✦  CAPTURE  ✦ ORGANIZE"
+        path="M 1360 -80 C 1290 -25 1260 50 1190 48 C 1120 46 1110 -25 1045 -5 C 975 18 1045 103 980 112 C 900 121 875 40 790 77 C 755 93 760 145 760 205 C 760 235 800 263 760 320 C 720 380 755 440 815 479 C 865 513 900 533 980 523 C 1050 513 1090 481 1150 510 C 1210 544 1225 620 1290 630 C 1340 640 1360 710 1430 775"
+        speed={90}
+        direction="forward"
+        separator=""
+        curviness={90}
+        tilt={0}
+        fontSize={18}
+        fontWeight={800}
+        letterSpacing={1}
+        uppercase
+        ribbon
+        ribbonColor="#95c482"
+        ribbonWidth={26}
+        edgeFade={0}
+        cross={false}
+        crossAngle={16}
+        draggable
+        scrollBoost={0}
+        outline={false}
+        pauseOnHover={false}
+      />
+      <div className="features-inner">
+        <div className="features-heading">
           <span className="section-kicker">Made for your everyday flow</span>
           <h2>Less switching.<br /><em>More doing.</em></h2>
-          <p>The useful parts of a workday, together in one personal workspace.</p>
+          <p className="features-description">
+            Everything you need to think clearly, stay in control, and move your day forward with purpose. From focused work and thoughtful planning to capturing ideas, managing priorities, and building better daily routines, Kazedesk brings every part of your workflow together in one beautifully connected space. Designed to simplify the way you work, create room for deeper focus, and make everyday productivity feel effortless.
+          </p>
         </div>
-        <div className="feature-rail-viewport" ref={viewportRef} role="region" tabIndex={0} aria-label="Kazedesk features">
-          <div className="feature-grid" ref={trackRef}>
-            {FEATURES.map(([Icon, number, title, description, featureImage]) => (
-              <article className="feature-card" key={number}>
-                <div className="feature-card-top"><span className="feature-icon"><Icon size={20} /></span><span>{number}</span></div>
-                <div className="feature-card-visual" aria-hidden="true"><img src={featureImage} alt="" /></div>
-                <div className="feature-card-copy">
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                </div>
-              </article>
-            ))}
+        <div className="features-experience">
+          <div
+            className={`features-folder${hasOpenedFolder ? " is-straight" : ""}`}
+            aria-label="Explore the tools inside Kazedesk"
+            onClickCapture={() => setHasOpenedFolder(true)}
+          >
+            <Folder
+              mode="book"
+              variant="glass"
+              color="#b6d3ac"
+              paperColor="#fffdf7"
+              label="Kazedesk"
+              items={FOLDER_FEATURES}
+              theme={theme}
+              defaultOpen
+              onOpenChange={() => setHasOpenedFolder(true)}
+              draggable={false}
+              size={1.2}
+            />
           </div>
+          {!hasOpenedFolder && (
+            <p className="features-folder-hint">Click the folder to open or close it</p>
+          )}
         </div>
       </div>
     </section>
