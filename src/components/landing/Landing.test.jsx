@@ -99,14 +99,14 @@ describe("landing page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("uses custom playback controls for direct Cloudinary video URLs", () => {
-    vi.stubEnv("VITE_PRODUCT_TRAILER_URL", "https://res.cloudinary.com/demo/video/upload/trailer.mp4");
+  it("uses custom playback controls for direct MP4 video URLs", () => {
+    vi.stubEnv("VITE_PRODUCT_TRAILER_URL", "https://example.com/videos/trailer.mp4");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
     const { container } = render(<HowItWorksSection />);
 
     expect(container.querySelector(".product-trailer video source")).toHaveAttribute(
       "src",
-      "https://res.cloudinary.com/demo/video/upload/trailer.mp4"
+      "https://example.com/videos/trailer.mp4"
     );
     expect(screen.getByRole("button", { name: "Play trailer" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mute trailer" })).toBeInTheDocument();

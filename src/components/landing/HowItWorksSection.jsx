@@ -331,7 +331,6 @@ function ProductTrailer() {
             <span className="product-trailer-orbit" aria-hidden="true" />
             <span className="product-trailer-play" aria-hidden="true"><Play size={22} fill="currentColor" /></span>
             <span className="product-trailer-label">The Kazedesk trailer</span>
-            <span className="product-trailer-note">Add a YouTube or public Cloudinary MP4 URL to VITE_PRODUCT_TRAILER_URL when it’s ready</span>
           </div>
         )}
         <div className={`product-trailer-controls${hasDirectVideo ? "" : " is-compact"}`}>
@@ -358,7 +357,7 @@ function ProductTrailer() {
               </button>
             </>
           )}
-          {!hasDirectVideo && <span className="trailer-controls-label">{youtubeUrl ? "YouTube player" : "Trailer preview"}</span>}
+          {youtubeUrl && <span className="trailer-controls-label">YouTube player</span>}
           <button
             ref={closeZoomRef}
             type="button"
