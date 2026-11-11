@@ -322,11 +322,13 @@
 }
 
 @media (min-width: 981px) and (max-width: 1100px) {
+  .features-ribbon { display: none; }
   .features-folder .folder-root { transform: translate(45px, 16px) scale(0.9) rotate(-4deg); }
   .features-folder.is-straight .folder-root { transform: translate(45px, 16px) scale(0.9); }
 }
 
 @media (min-width: 721px) and (max-width: 980px) {
+  .features-ribbon { display: none; }
   .features-folder .folder-root { transform: translate(15px, 16px) scale(0.75) rotate(-4deg); }
   .features-folder.is-straight .folder-root { transform: translate(15px, 16px) scale(0.75); }
 }

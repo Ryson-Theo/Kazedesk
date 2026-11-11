@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Code2, Network, StickyNote, Users } from "lucide-react";
 import { Link } from "react-router-dom";
+import { gsap } from "gsap";
 import { LANDING_LINKS } from "./landingLinks";
 import GithubIcon from "./GithubIcon";
 import Folder from "./Folder";
@@ -50,13 +51,44 @@ const FEATURE_SHOWCASES = [
 
 export function FeatureGrid({ theme = "dark" }) {
   const [hasOpenedFolder, setHasOpenedFolder] = useState(false);
+  const sectionRef = useRef(null);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return undefined;
+
+    const animateFeatures = () => {
+      gsap.fromTo(
+        [section.querySelector(".features-heading"), section.querySelector(".features-experience")],
+        { autoAlpha: 0, y: 30 },
+        { autoAlpha: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.18 }
+      );
+    };
+
+    if (!window.IntersectionObserver) {
+      animateFeatures();
+      return () => gsap.killTweensOf(section.querySelectorAll(".features-heading, .features-experience"));
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      animateFeatures();
+      observer.disconnect();
+    }, { threshold: 0.2 });
+
+    observer.observe(section);
+    return () => {
+      observer.disconnect();
+      gsap.killTweensOf(section.querySelectorAll(".features-heading, .features-experience"));
+    };
+  }, []);
 
   return (
-    <section className="features-section" id="features">
+    <section className="features-section" id="features" ref={sectionRef}>
       <TextLoop
         className="features-ribbon"
         text="FOCUS   ✦  PLAN  ✦  CAPTURE  ✦ ORGANIZE"
-        path="M 1360 -80 C 1290 -25 1260 50 1190 48 C 1120 46 1110 -25 1045 -5 C 975 18 1045 103 980 112 C 900 121 875 40 790 77 C 755 93 760 145 760 205 C 760 235 800 263 760 320 C 720 380 755 440 815 479 C 865 513 900 533 980 523 C 1050 513 1090 481 1150 510 C 1210 544 1225 620 1290 630 C 1340 640 1360 710 1430 775"
+        path="M 1360 -80 C 1290 -25 1260 50 1190 48 C 1120 46 1110 -25 1045 -5 C 975 18 1045 103 980 112 C 900 121 850 60 770 95 C 710 121 715 180 750 220 C 785 260 785 300 760 340 C 735 380 735 420 760 460 C 785 500 820 525 890 535 C 960 545 1070 485 1140 505 C 1210 525 1250 600 1320 625 C 1370 643 1380 710 1430 775"
         speed={90}
         direction="forward"
         separator=""
