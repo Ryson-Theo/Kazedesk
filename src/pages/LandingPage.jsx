@@ -2,12 +2,11 @@ import { useState } from "react";
 import LandingNavbar from "../components/landing/LandingNavbar";
 import LandingHero from "../components/landing/LandingHero";
 import LandingFooter from "../components/landing/LandingFooter";
-import DemoVideosSection from "../components/landing/DemoVideosSection";
+import HowItWorksSection from "../components/landing/HowItWorksSection";
 import GifDropSection from "../components/landing/GifDropSection";
 import {
   FAQSection,
   FeatureGrid,
-  FeatureShowcaseSection,
   OpenSourceSection,
 } from "../components/landing/LandingSections";
 import "../styles/landing.css";
@@ -27,8 +26,7 @@ export default function LandingPage() {
       <LandingHero theme={theme} />
       <FeatureGrid theme={theme} />
       <GifDropSection />
-      <DemoVideosSection />
-      <FeatureShowcaseSection />
+      <HowItWorksSection />
       <OpenSourceSection />
       <FAQSection />
       <LandingFooter />

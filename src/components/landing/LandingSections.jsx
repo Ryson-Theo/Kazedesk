@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Code2, Network, StickyNote, Users } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Code2, Users } from "lucide-react";
 import { gsap } from "gsap";
 import { LANDING_LINKS } from "./landingLinks";
 import GithubIcon from "./GithubIcon";
@@ -36,17 +35,6 @@ const FAQS = [
   ["Where is my data stored?", "Your settings, tasks, notes, and analytics are kept in this browser's local storage."],
   ["Can I self-host it?", "Yes. Kazedesk is a client-side React app. The source is available on GitHub, and you can build and host the static site yourself."],
   ["Does it work offline?", "The app shell and locally saved information are available after loading. Weather updates and YouTube playback require internet access."],
-];
-
-const FEATURE_SHOWCASES = [
-  {
-    version: "v1.0.0",
-    status: "Available now",
-    icon: StickyNote,
-    title: "NoteMap",
-    description: "Turn a page of notes into a visual map. Arrange ideas freely, connect related thoughts, and keep your whole project in view.",
-    href: "/wall",
-  },
 ];
 
 export function FeatureGrid({ theme = "dark" }) {
@@ -140,46 +128,6 @@ export function FeatureGrid({ theme = "dark" }) {
           {!hasOpenedFolder && (
             <p className="features-folder-hint">Click the folder to open or close it</p>
           )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export function FeatureShowcaseSection() {
-  return (
-    <section className="feature-showcase-section" id="whats-new">
-      <div className="feature-showcase-inner">
-        <div className="feature-showcase-heading">
-          <span className="section-kicker">A workspace that keeps growing</span>
-          <h2>What’s new<br /><em>in Kazedesk?</em></h2>
-          <p>New ideas and improvements, collected in one place.</p>
-        </div>
-        <div className="feature-showcase-grid">
-          {FEATURE_SHOWCASES.map(({ version, status, icon: Icon, title, description, href }) => (
-            <article className="feature-showcase-card" key={title}>
-              <div className="feature-showcase-copy">
-                <div className="feature-showcase-meta">
-                  <span className="feature-showcase-version">{version}</span>
-                  <span className="feature-showcase-status">{status}</span>
-                </div>
-                <h3><Icon size={21} />{title}</h3>
-                <p>{description}</p>
-                <Link className="feature-showcase-link" to={href}>Explore NoteMap <ArrowRight size={15} /></Link>
-              </div>
-              <div className="note-map-preview" aria-hidden="true">
-                <span className="note-map-preview-kicker"><Network size={12} /> CONNECTED NOTES</span>
-                <div className="note-map-canvas">
-                  <span className="note-map-connector note-map-connector-one" />
-                  <span className="note-map-connector note-map-connector-two" />
-                  <span className="note-map-node note-map-node-one">Ideas</span>
-                  <span className="note-map-node note-map-node-two">Research</span>
-                  <span className="note-map-node note-map-node-three">Next steps</span>
-                </div>
-                <span className="note-map-preview-footer">A clearer view of your thinking</span>
-              </div>
-            </article>
-          ))}
         </div>
       </div>
     </section>

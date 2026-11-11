@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LandingHero from "./LandingHero";
-import DemoVideosSection from "./DemoVideosSection";
+import HowItWorksSection from "./HowItWorksSection";
 import darkHeroImage from "../../assets/hero images/dark.png";
 import lightHeroImage from "../../assets/hero images/light.png";
 import { FeatureGrid, OpenSourceSection } from "./LandingSections";
@@ -10,30 +10,107 @@ import { FeatureGrid, OpenSourceSection } from "./LandingSections";
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
 describe("landing page", () => {
-  it("loads only the chosen demo video after the user clicks", () => {
-    render(<DemoVideosSection />);
+  it("explains the workflow and keeps a single trailer placeholder", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }));
+    const { container } = render(<HowItWorksSection />);
 
-    expect(document.querySelector(".demo-video-player video")).toBeNull();
-    expect(document.querySelector(".demo-video-player source")).toBeNull();
+    expect(screen.getByRole("heading", { name: /one space\..*your kind of flow/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open your workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Find your flow" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Make it yours" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open your workspace/i })).toHaveAttribute("href", "/dashboard");
+    expect(container.querySelectorAll("video")).toHaveLength(0);
+    expect(screen.getByText("The Kazedesk trailer")).toBeInTheDocument();
+    expect(await screen.findByText(/no releases yet/i)).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Play Focus timer demo" }));
+  it("shows release notes returned by GitHub", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        name: "A calmer workspace",
+        tag_name: "v1.2.0",
+        html_url: "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v1.2.0",
+        published_at: "2026-11-10T12:00:00Z",
+        body: "A refreshed workspace and a smoother daily flow.\n\n## Highlights\n- Added a calmer workspace\n- Improved NoteMap performance\n- Made focus sessions easier to manage\n- Added independent boards\n- Improved mobile layouts",
+      }, {
+        name: "Older release",
+        tag_name: "v1.1.0",
+        html_url: "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v1.1.0",
+        published_at: "2026-10-10T12:00:00Z",
+        body: "An older release.",
+      }],
+    }));
+    const { container } = render(<HowItWorksSection />);
 
-    expect(document.querySelector(".demo-video-player video")).toHaveAttribute("preload", "none");
-    expect(document.querySelector(".demo-video-player source")).toHaveAttribute(
-      "src",
-      "https://res.cloudinary.com/g0qwmiex/video/upload/v1791117418/timer.mp4"
+    expect(await screen.findByRole("link", { name: /read full release notes/i })).toHaveAttribute(
+      "href",
+      "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v1.2.0"
     );
+    expect(screen.getByText("A refreshed workspace and a smoother daily flow.")).toBeInTheDocument();
+    expect(screen.getByText("Added a calmer workspace")).toBeInTheDocument();
+    expect(screen.getByText("Improved NoteMap performance")).toBeInTheDocument();
+    expect(container.querySelectorAll(".release-note-highlights li")).toHaveLength(4);
+    expect(screen.queryByText("Improved mobile layouts")).not.toBeInTheDocument();
+    expect(screen.getByText("v1.2.0")).toBeInTheDocument();
+    expect(screen.queryByText("Older release")).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".release-notes-fall")).toHaveLength(0);
+    expect(container.querySelector(".release-notes-laser")).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /tasks & reminders/i }));
-    expect(document.querySelector(".demo-video-player source")).toHaveAttribute(
-      "src",
-      "https://res.cloudinary.com/g0qwmiex/video/upload/v1791116558/tasks.mp4"
+  it("shows the latest known release when GitHub is rate limited or unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    render(<HowItWorksSection />);
+
+    expect(await screen.findByText("Kazedesk v0.2.0")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/showing the latest release available here/i);
+    expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/Ryson-Theo/Kazedesk/releases"
     );
+    expect(screen.getByRole("link", { name: /read full release notes/i })).toHaveAttribute(
+      "href",
+      "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v0.2.0"
+    );
+  });
+
+  it("embeds YouTube trailers and supports an expandable player", () => {
+    vi.stubEnv("VITE_PRODUCT_TRAILER_URL", "https://youtu.be/abcdefghijk");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    render(<HowItWorksSection />);
+
+    expect(screen.getByTitle("Kazedesk product trailer")).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/abcdefghijk?controls=1&rel=0&playsinline=1"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand trailer" }));
+    expect(screen.getByRole("dialog", { name: "Expanded Kazedesk product trailer" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("uses custom playback controls for direct Cloudinary video URLs", () => {
+    vi.stubEnv("VITE_PRODUCT_TRAILER_URL", "https://res.cloudinary.com/demo/video/upload/trailer.mp4");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    const { container } = render(<HowItWorksSection />);
+
+    expect(container.querySelector(".product-trailer video source")).toHaveAttribute(
+      "src",
+      "https://res.cloudinary.com/demo/video/upload/trailer.mp4"
+    );
+    expect(screen.getByRole("button", { name: "Play trailer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mute trailer" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Seek trailer" })).toBeInTheDocument();
   });
 
   it("shows a single accessible Kazedesk hero wordmark", () => {
