@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { gsap } from "gsap";
-import darkHeroImage from "../../assets/hero images/dark.png";
-import lightHeroImage from "../../assets/hero images/light.png";
+import darkHeroImage from "../../assets/hero images/dark.jpg";
+import lightHeroImage from "../../assets/hero images/light.jpg";
 
 export default function LandingHero({ theme = "dark" }) {
   const navigate = useNavigate();
@@ -82,6 +82,9 @@ export default function LandingHero({ theme = "dark" }) {
           className="hero-photo"
           src={heroImage}
           alt="A calm workspace with a person working at a computer beside a window"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
         />
         <div className="hero-copy">
           <div className="hero-copy-main">

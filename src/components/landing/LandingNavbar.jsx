@@ -25,7 +25,7 @@ export default function LandingNavbar({ theme, onToggleTheme }) {
         <button className="landing-theme-toggle" type="button" onClick={onToggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
           {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
         </button>
-        <a className="github-nav-link" href={LANDING_LINKS.github || "#open-source"} target={LANDING_LINKS.github ? "_blank" : undefined} rel={LANDING_LINKS.github ? "noreferrer" : undefined} aria-label="GitHub repository details" title={LANDING_LINKS.github ? "Open GitHub repository" : "Add repository URL in landingLinks.js"}><GithubIcon size={19} /></a>
+        <a className="github-nav-link" href={LANDING_LINKS.github || "#open-source"} target={LANDING_LINKS.github ? "_blank" : undefined} rel={LANDING_LINKS.github ? "noopener noreferrer" : undefined} aria-label="GitHub repository details" title={LANDING_LINKS.github ? "Open GitHub repository" : "Add repository URL in landingLinks.js"}><GithubIcon size={19} /></a>
         <button className="nav-launch" type="button" onClick={launchApp}>Launch app <ArrowUpRight size={15} /></button>
         <button className="nav-menu-toggle" type="button" aria-label={menuOpen ? "Close navigation" : "Open navigation"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
           {menuOpen ? <X size={20} /> : <Menu size={20} />}

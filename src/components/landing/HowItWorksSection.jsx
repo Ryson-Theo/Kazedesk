@@ -12,7 +12,17 @@ import {
 import GithubIcon from "./GithubIcon";
 import { LANDING_LINKS } from "./landingLinks";
 
-const getTrailerSource = () => import.meta.env.VITE_PRODUCT_TRAILER_URL?.trim() || "";
+const getTrailerSource = () => {
+  const source = import.meta.env.VITE_PRODUCT_TRAILER_URL?.trim() || "";
+  if (!source) return "";
+
+  try {
+    const url = new URL(source, window.location.origin);
+    return url.protocol === "https:" || url.origin === window.location.origin ? url.href : "";
+  } catch {
+    return "";
+  }
+};
 const RELEASES_URL = `${LANDING_LINKS.github.replace(
   "https://github.com/",
   "https://api.github.com/repos/"
@@ -175,7 +185,7 @@ function ReleaseNotesCard() {
             className="release-notes-all"
             href={`${LANDING_LINKS.github}/releases`}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             aria-label="View all GitHub releases"
             title="View all releases"
           >
@@ -187,7 +197,7 @@ function ReleaseNotesCard() {
           {loading && <p className="release-notes-message" role="status">Loading the latest release…</p>}
           {loadFailed && latestRelease && (
             <p className="release-notes-message" role="status">
-              Showing the latest release available here. Check <a href={`${LANDING_LINKS.github}/releases`} target="_blank" rel="noreferrer">GitHub</a> for newer notes.
+            Showing the latest release available here. Check <a href={`${LANDING_LINKS.github}/releases`} target="_blank" rel="noopener noreferrer">GitHub</a> for newer notes.
             </p>
           )}
           {!loading && !loadFailed && releases.length === 0 && (
@@ -211,7 +221,7 @@ function ReleaseNotesCard() {
                 </ul>
               )}
               <span className="release-note-read">
-                <a href={latestRelease.html_url} target="_blank" rel="noreferrer">
+                <a href={latestRelease.html_url} target="_blank" rel="noopener noreferrer">
                   Read full release notes <ArrowRight size={14} />
                 </a>
               </span>
@@ -305,6 +315,7 @@ function ProductTrailer() {
               className="product-trailer-embed"
               src={youtubeUrl}
               title="Kazedesk product trailer"
+              loading="lazy"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
               allowFullScreen
@@ -313,7 +324,7 @@ function ProductTrailer() {
             <video
               ref={videoRef}
               playsInline
-              preload="metadata"
+              preload="none"
               aria-label="Kazedesk product trailer"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}

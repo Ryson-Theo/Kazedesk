@@ -37,6 +37,20 @@ const FAQS = [
   ["Does it work offline?", "The app shell and locally saved information are available after loading. Weather updates and YouTube playback require internet access."],
 ];
 
+function isTrustedHttpsUrl(value, hostname) {
+  if (typeof value !== "string") return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && url.hostname === hostname
+      && !url.username
+      && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 export function FeatureGrid({ theme = "dark" }) {
   const [hasOpenedFolder, setHasOpenedFolder] = useState(false);
   const sectionRef = useRef(null);
@@ -140,11 +154,11 @@ function ContributorCard({ contributor, decorative = false }) {
       className="contributor-card"
       href={contributor.html_url}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       aria-label={`GitHub profile ${contributor.login}, ${contributor.contributions} contributions`}
       tabIndex={decorative ? -1 : undefined}
     >
-      <img src={contributor.avatar_url} alt="" loading="lazy" />
+      <img src={contributor.avatar_url} alt="" width="34" height="34" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
       <span className="contributor-card-copy">
         <strong>{contributor.login}</strong>
         <small>{contributor.contributions} contributions</small>
@@ -178,10 +192,12 @@ function ContributorMarquee() {
       .then((data) => {
         if (!Array.isArray(data)) throw new Error("GitHub returned an invalid contributor list");
         setContributors(data.filter((contributor) => (
-          contributor.type === "User"
-          && contributor.login
-          && contributor.html_url
-          && contributor.avatar_url
+          contributor
+          && contributor.type === "User"
+          && typeof contributor.login === "string"
+          && contributor.login.length > 0
+          && isTrustedHttpsUrl(contributor.html_url, "github.com")
+          && isTrustedHttpsUrl(contributor.avatar_url, "avatars.githubusercontent.com")
           && Number.isFinite(contributor.contributions)
           && contributor.contributions > 0
         )));
@@ -198,14 +214,10 @@ function ContributorMarquee() {
 
   return (
     <div className="contributors-section" aria-label="GitHub contributors">
-      <div className="contributors-heading">
-        <h3>Built together</h3>
-        <p>Profiles appear here when contributions reach the main branch.</p>
-      </div>
       {loading && <p className="contributors-message" role="status">Loading contributor profiles…</p>}
       {loadFailed && (
         <p className="contributors-message" role="alert">
-          Contributor profiles are temporarily unavailable. Visit the <a href={LANDING_LINKS.github} target="_blank" rel="noreferrer">GitHub repository</a>.
+        Contributor profiles are temporarily unavailable. Visit the <a href={LANDING_LINKS.github} target="_blank" rel="noopener noreferrer">GitHub repository</a>.
         </p>
       )}
       {!loading && !loadFailed && contributors.length === 0 && (
@@ -246,7 +258,7 @@ export function OpenSourceSection() {
         </div>
         <div className="opensource-actions">
           {repositoryAvailable
-            ? <a className="button-light" href={LANDING_LINKS.github} target="_blank" rel="noreferrer"><GithubIcon size={16} /> GitHub repository</a>
+            ? <a className="button-light" href={LANDING_LINKS.github} target="_blank" rel="noopener noreferrer"><GithubIcon size={16} /> GitHub repository</a>
             : <span className="button-light" aria-disabled="true" title="Add repository URL in landingLinks.js"><GithubIcon size={16} /> GitHub repository coming soon</span>}
         </div>
         <div className="opensource-note"><Users size={15} />{repositoryAvailable ? " Contributions are welcome." : " Contributor information will appear with the repository."}</div>

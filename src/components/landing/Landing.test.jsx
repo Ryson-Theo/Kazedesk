@@ -3,8 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LandingHero from "./LandingHero";
 import HowItWorksSection from "./HowItWorksSection";
-import darkHeroImage from "../../assets/hero images/dark.png";
-import lightHeroImage from "../../assets/hero images/light.png";
+import darkHeroImage from "../../assets/hero images/dark.jpg";
+import lightHeroImage from "../../assets/hero images/light.jpg";
 import { FeatureGrid, OpenSourceSection } from "./LandingSections";
 
 afterEach(() => {
@@ -243,6 +243,23 @@ describe("landing page", () => {
     expect(await screen.findByRole("link", {
       name: "GitHub profile octocat, 42 contributions",
     })).toHaveAttribute("href", "https://github.com/octocat");
+  });
+
+  it("ignores contributor links that are not hosted by GitHub over HTTPS", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        type: "User",
+        login: "unsafe-link",
+        html_url: "javascript:alert(1)",
+        avatar_url: "https://evil.example/avatar.png",
+        contributions: 1,
+      }],
+    }));
+    render(<OpenSourceSection />);
+
+    expect(await screen.findByText(/no merged contributions are listed yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /unsafe-link/i })).not.toBeInTheDocument();
   });
 
   it("shows an empty state when GitHub has no listed contributors", async () => {
