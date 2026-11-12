@@ -1,17 +1,21 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, LayoutGrid, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, LayoutGrid, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { storageManager } from '../utils/localStorage';
-import { deleteWallAttachment } from '../utils/noteWallMedia';
+import { deleteWallAttachment, saveWallAttachments } from '../utils/noteWallMedia';
+import { createAttachmentIdMap, loadReferencedWallAttachments, remapBackupMediaFiles, remapWallAttachmentIds } from '../utils/backupArchive';
+import { parseNoteWallBackupArchive, parseNoteWallBackupJSON } from '../utils/noteWallBackup';
 import '../styles/NoteWallBoards.css';
 
 export default function NoteWallBoards() {
   const navigate = useNavigate();
+  const importFileRef = useRef(null);
   const [boards, setBoards] = useState(() => storageManager.getNoteWallBoards());
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
 
   const createBoard = (event) => {
@@ -24,6 +28,41 @@ export default function NoteWallBoards() {
       navigate(`/wall/boards/${board.id}`);
     } catch (createError) {
       setError(createError.message || 'Could not create this board.');
+    }
+  };
+
+  const importBoardBackup = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setIsImporting(true);
+    setError('');
+    try {
+      const isZip = file.type === 'application/zip' || /\.zip$/i.test(file.name);
+      const backup = isZip
+        ? parseNoteWallBackupArchive(new Uint8Array(await file.arrayBuffer()))
+        : null;
+      const data = backup?.data || parseNoteWallBackupJSON(await file.text());
+      if (data.context !== 'board') {
+        throw new Error('Choose a custom board JSON or ZIP backup to import a new board.');
+      }
+      const idMap = createAttachmentIdMap([data.wall]);
+      const wall = remapWallAttachmentIds(data.wall, idMap);
+      const mediaFiles = isZip
+        ? remapBackupMediaFiles(backup.mediaFiles, idMap)
+        : await loadReferencedWallAttachments(data.wall, idMap);
+      await saveWallAttachments(mediaFiles.map(({ id, blob }) => ({ id, blob })));
+      const board = storageManager.importNoteWallBoard({
+        ...data,
+        name: data.boardName,
+        wall,
+      });
+      setBoards(storageManager.getNoteWallBoards());
+      navigate(`/wall/boards/${board.id}`);
+    } catch (importError) {
+      setError(importError.message || 'Could not import this board backup.');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -141,6 +180,23 @@ export default function NoteWallBoards() {
             </button>
           </div>
         </form>
+        <div className="note-wall-board-import">
+          <div>
+            <h3>Import a board backup</h3>
+            <p>JSON uses media already saved in this browser; ZIP backups include their media files.</p>
+          </div>
+          <button type="button" className="note-wall-board-open" disabled={isImporting} onClick={() => importFileRef.current?.click()}>
+            <Upload size={15} /> {isImporting ? 'Importing…' : 'Choose JSON or ZIP'}
+          </button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".json,application/json,.zip,application/zip"
+            aria-label="Choose board backup JSON or ZIP"
+            hidden
+            onChange={importBoardBackup}
+          />
+        </div>
         {error && <p className="note-wall-boards-error" role="alert">{error}</p>}
       </section>
 

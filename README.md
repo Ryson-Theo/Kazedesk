@@ -22,7 +22,7 @@
 - Write notes in Markdown; pin links, clip web pages, and connect related ideas.
 - Record voice notes with a live waveform, review playback, and discard or add recordings to the board. Audio nodes include seek and playback-speed controls.
 - Pan, zoom, filter, and tidy your wall. Changes save locally, with undo and redo.
-- Export walls as PNG, PDF, Markdown, or JSON. Optional private Google Drive saves are available.
+- Export wall data as JSON. Custom boards also support media-inclusive ZIP backups.
 
 ### The details that make it yours
 
@@ -41,7 +41,7 @@
 
 ## How it works
 
-Kazedesk is a static, client-side React app. Workspace data stays in the current browser by default. Weather lookup and embedded media contact external services; optional Google Drive saves send a private JSON copy of a note wall to the signed-in user's Drive.
+Kazedesk is a static, client-side React app. Workspace data stays in the current browser by default. Weather lookup and embedded media contact external services. JSON and custom-board ZIP backups are generated locally; any upload to Google Drive is performed manually by the user.
 
 ```mermaid
 flowchart LR
@@ -60,8 +60,10 @@ flowchart LR
     Board --> IndexedDB[(Attachment files in IndexedDB)]
     Widgets --> Weather["Open-Meteo"]
     Widgets --> Media["YouTube and hosted media"]
-    Wall -. Optional private save .-> Drive["Google Drive"]
-    Board -. Optional private save .-> Drive
+    Wall --> Backup["Dated JSON ZIP"]
+    Board --> Backup
+    Backup --> Download["Download to device"]
+    Download -. Manual upload by user .-> Drive["Google Drive or other storage"]
 ```
 
 ## Getting started
@@ -82,9 +84,15 @@ npm run dev
 
 Open the local URL printed by Vite (usually `http://localhost:5173`). The landing page is at `/`, the workspace is at `/dashboard`, and its connected sticky-note wall is at `/wall`. Manage independent named boards at `/wall/boards` and open an individual board at `/wall/boards/:boardId`. The dashboard wall and independent boards keep their notes and tasks separate.
 
-### Optional Google Drive saves
+### JSON and board ZIP backups
 
-The dashboard wall and independent boards can each save a JSON copy to the signed-in user's Google Drive. To enable it, create a Google OAuth web client, enable the Google Drive API for its Google Cloud project, add your development/deployed origins as authorized JavaScript origins, and copy `.env.example` to `.env.local` with the client ID. The browser app requests the `drive.file` scope and creates a private file; it does not make the file public or store OAuth access tokens in local storage. Drive saves require the user to authorize the app and are subject to Google's quotas and policies. Attachment files remain in this browser and are not included in wall exports or Drive JSON saves. Without Drive setup, local autosave and downloadable exports continue to work.
+The main sticky-note wall at `/wall` exports and imports JSON only. Its JSON stores attachment references, not media files; importing it looks up those references in this browser's IndexedDB. Those files must still exist in the same browser profile.
+
+Custom boards support **Export JSON** and **Download backup ZIP**, with matching JSON/ZIP imports from **Note wall boards** or the board's Export menu. Board JSON also uses references to media in the current browser. ZIP backups include attached images, PDFs, and audio recordings and can restore them after browser data is cleared.
+
+Dashboard **Settings** uses JSON only: **Export Dashboard JSON** includes dashboard preferences, weather/background settings, notes, tasks, boards, layouts, and other stored text data; **Import Dashboard JSON** restores that snapshot after confirmation. It does not include attachment file contents.
+
+JSON and ZIP files are created locally. You can upload custom-board ZIPs to Google Drive or another provider yourself; Kazedesk does not sign in to Drive, call its API, or upload your data. Markdown, PDF, and PNG exports are also available.
 
 ### Available scripts
 
@@ -103,13 +111,13 @@ Kazedesk is a client-side React application and can be deployed to a static host
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
 
-Configure the host to serve `index.html` for application routes such as `/dashboard` (SPA fallback). A root-domain deployment works with the default Vite configuration. If deploying beneath a repository subpath, configure Vite's `base` option and the router's basename for that path.
+Configure the host to serve `index.html` for application routes such as `/dashboard` and `/privacy`, and for unknown paths handled by the branded 404 page (SPA fallback). A root-domain deployment works with the default Vite configuration. If deploying beneath a repository subpath, configure Vite's `base` option and the router's basename for that path.
 
 Docker is not required for the current static application. See [ARCHITECTURE.md](./ARCHITECTURE.md) for its runtime boundaries and deployment considerations.
 
 ## Privacy and browser capabilities
 
-Kazedesk has no application server or account system. Settings, tasks, notes, board definitions, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. Note-wall attachment file contents, including voice recordings, are stored separately in browser `IndexedDB` after you add them to a board. Recording requires browser microphone permission and is available on secure origins such as HTTPS or localhost. Recordings can be previewed or discarded before saving to the board. This data does not automatically sync between browsers or devices. Clearing site data removes it; use the workspace backup feature or export the wall before changing browsers or devices. Google Drive saves are optional private JSON copies; downloadable PNG, print-to-PDF, Markdown, and JSON wall exports are also available. Attachment file contents are not included in those wall exports or Drive saves.
+Kazedesk has no application server or account system. Settings, tasks, notes, board definitions, tags, wall positions/sizes/connections, layouts, playlists, and analytics are stored in the browser's `localStorage` for the current origin. Note-wall attachment file contents, including voice recordings, are stored separately in browser `IndexedDB` after you add them to a board. Recording requires browser microphone permission and is available on secure origins such as HTTPS or localhost. Recordings can be previewed or discarded before saving to the board. JSON exports contain attachment references only and require the referenced IndexedDB records to remain in the same browser profile. Custom-board ZIP backups include attachment contents and can be restored after browser data is cleared. Dashboard Settings JSON does not export media files. Kazedesk does not connect to Google Drive. Any upload to Drive or another provider is initiated by the user and handled under that provider's policies.
 
 The weather widget sends the configured city to Open-Meteo for geocoding and weather data, with an attribution link beside displayed weather. City lookups are cached in the browser for 30 days and forecasts for four hours. To limit accidental repeat requests, each browser profile allows up to three city lookups and six forecast requests per UTC day, with a short cooldown between same-type requests. These client-side limits can be cleared or bypassed and are not a shared quota or security boundary. Open-Meteo's free API is for non-commercial use and has daily and short-term request limits; check its [terms](https://open-meteo.com/en/terms) before launch. A shared edge cache or backend and an appropriate API plan are needed to enforce limits across visitors or support commercial use. YouTube embeds and externally hosted landing-page media may also connect to their respective providers when used. Review those providers' privacy policies if this matters to your use.
 

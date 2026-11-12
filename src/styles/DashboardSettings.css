@@ -504,6 +504,14 @@
   background: rgba(10, 15, 30, 0.3);
 }
 
+.settings-backup-status {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
 .settings-action-btn.export {
   background: rgba(16, 185, 129, 0.15);
   color: #6ee7b7;

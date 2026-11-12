@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Mic, Moon, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Mic, Moon, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import MarkdownContent from '../components/MarkdownContent';
 import { storageManager } from '../utils/localStorage';
-import { exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
+import { downloadBlob, exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
+import { createNoteWallBackupArchive, parseNoteWallBackupArchive, parseNoteWallBackupJSON } from '../utils/noteWallBackup';
 import { tidyWallLayout } from '../utils/noteWallLayout';
 import { addRelatedWallConnections, getWallRelationColor } from '../utils/noteWallRelations';
 import { recolorIntersectingConnections } from '../utils/noteWallIntersections';
-import { getWallAttachment, MAX_WALL_ATTACHMENT_SIZE, pruneWallAttachments, saveWallAttachment, validateWallAttachment } from '../utils/noteWallMedia';
+import { getWallAttachment, MAX_WALL_ATTACHMENT_SIZE, pruneWallAttachments, saveWallAttachment, saveWallAttachments, validateWallAttachment } from '../utils/noteWallMedia';
+import { loadReferencedWallAttachments, remapBackupMediaFiles, remapWallAttachmentIds, createAttachmentIdMap } from '../utils/backupArchive';
 import { createWebClipperBookmarklet, decodeWebClipPayload, fetchWebClipMetadata, normalizeWebClip } from '../utils/noteWallWebClipper';
 import '../styles/NoteWall.css';
 
-const GOOGLE_DRIVE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const CARD_WIDTH = 250;
 const CARD_HEIGHT = 190;
 const NOTE_COLORS = {
@@ -587,57 +588,6 @@ function formatTaskReminder(value) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-async function getGoogleToken() {
-  if (!GOOGLE_DRIVE_CLIENT_ID) throw new Error('Google Drive is not configured. Set VITE_GOOGLE_CLIENT_ID to enable it.');
-  if (!window.google?.accounts?.oauth2) {
-    await new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-      if (existing) {
-        existing.addEventListener('load', resolve, { once: true });
-        existing.addEventListener('error', () => reject(new Error('Could not load Google sign-in.')), { once: true });
-        if (window.google?.accounts?.oauth2) resolve();
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = resolve;
-      script.onerror = () => reject(new Error('Could not load Google sign-in.'));
-      document.head.appendChild(script);
-    });
-  }
-  return new Promise((resolve, reject) => {
-    window.google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_DRIVE_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: (response) => {
-        if (response.error || !response.access_token) reject(new Error(response.error_description || response.error || 'Google sign-in failed.'));
-        else resolve(response.access_token);
-      },
-    }).requestAccessToken();
-  });
-}
-
-async function savePrivateDriveFile(token, data, fileId) {
-  const endpoint = fileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=media`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-  const body = JSON.stringify(data, null, 2);
-  const options = { method: fileId ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}` } };
-  if (fileId) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = body;
-  } else {
-    const boundary = `kazedesk_${crypto.randomUUID()}`;
-    options.headers['Content-Type'] = `multipart/related; boundary=${boundary}`;
-    options.body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: 'Kazedesk sticky note wall.json', mimeType: 'application/json' })}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`;
-  }
-  const response = await fetch(endpoint, options);
-  if (!response.ok) throw new Error(`Google Drive save failed (${response.status}): ${await response.text()}`);
-  return fileId || (await response.json()).id;
-}
-
 export default function NoteWall({ boardId = null }) {
   const initialBoard = useMemo(() => boardId ? storageManager.getNoteWallBoard(boardId) : null, [boardId]);
   const [boardName, setBoardName] = useState(() => initialBoard?.name || 'Sticky note wall');
@@ -667,7 +617,8 @@ export default function NoteWall({ boardId = null }) {
   const [mobileConnectionTab, setMobileConnectionTab] = useState('link');
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [selectedCardId, setSelectedCardId] = useState(null);
-  const [driveStatus, setDriveStatus] = useState('');
+  const [backupCard, setBackupCard] = useState(null);
+  const [backupError, setBackupError] = useState('');
   const [wallSaveStatus, setWallSaveStatus] = useState('Changes save automatically in this browser');
   const [attachmentStatus, setAttachmentStatus] = useState('');
   const [webClipStatus, setWebClipStatus] = useState('');
@@ -717,6 +668,7 @@ export default function NoteWall({ boardId = null }) {
   const [connectionPreview, setConnectionPreview] = useState(null);
   const boardRef = useRef(null);
   const attachmentInputRef = useRef(null);
+  const backupImportInputRef = useRef(null);
   const voiceRecorderRef = useRef(null);
   const voiceStreamRef = useRef(null);
   const voiceAudioContextRef = useRef(null);
@@ -2189,28 +2141,68 @@ export default function NoteWall({ boardId = null }) {
     }));
   };
 
-  const saveToDrive = async () => {
-    setDriveStatus('Connecting to Google Drive…');
+  const downloadBackup = async () => {
+    setBackupCard(null);
+    setBackupError('');
     try {
-      const token = await getGoogleToken();
-      const data = {
-        app: 'Kazedesk',
-        type: 'sticky-note-wall',
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        ...(boardId ? { boardName } : {}),
+      const { blob, filename, jsonPath, mediaCount } = await createNoteWallBackupArchive({
+        boardId,
+        boardName,
         categories,
         notes,
         tasks,
+        taskCategories,
         wall,
-      };
-      const driveFileKey = boardId ? `kazedesk_note_wall_drive_file_id_${boardId}` : 'kazedesk_note_wall_drive_file_id';
-      const storedId = localStorage.getItem(driveFileKey);
-      const fileId = await savePrivateDriveFile(token, data, storedId);
-      localStorage.setItem(driveFileKey, fileId);
-      setDriveStatus('Saved privately to your Google Drive.');
+      });
+      downloadBlob(blob, filename);
+      setBackupCard({ filename, jsonPath, mediaCount });
     } catch (error) {
-      setDriveStatus(error.message || 'Could not save the wall to Google Drive.');
+      setBackupError(error.message || 'Could not create the backup archive.');
+    }
+  };
+
+  const handleBackupImportSelection = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const isZip = boardId && (file.type === 'application/zip' || /\.zip$/i.test(file.name));
+      const backup = isZip
+        ? parseNoteWallBackupArchive(new Uint8Array(await file.arrayBuffer()))
+        : null;
+      const data = backup?.data || parseNoteWallBackupJSON(await file.text());
+      const expectedContext = boardId ? 'board' : 'workspace';
+      if (data.context !== expectedContext) {
+        throw new Error(`Choose a ${expectedContext} JSON backup for this page.`);
+      }
+      const target = boardId ? `the "${boardName}" board` : 'the main note wall';
+      if (!window.confirm(`Replace ${target} with the selected backup?`)) return;
+
+      const idMap = createAttachmentIdMap([data.wall]);
+      const restoredWall = remapWallAttachmentIds(data.wall, idMap);
+      const restoredMedia = isZip
+        ? remapBackupMediaFiles(backup.mediaFiles, idMap)
+        : await loadReferencedWallAttachments(data.wall, idMap);
+      await saveWallAttachments(restoredMedia.map(({ id, blob }) => ({ id, blob })));
+
+      if (boardId) {
+        storageManager.saveNoteWallBoard(boardId, {
+          notes: data.notes,
+          tasks: data.tasks,
+          categories: data.categories,
+          taskCategories: data.taskCategories || ['Inbox'],
+          wall: restoredWall,
+        });
+      } else {
+        storageManager.saveStickyNotes(data.notes);
+        storageManager.saveNoteCategories(data.categories);
+        storageManager.saveTasks(data.tasks);
+        storageManager.saveTaskCategories(data.taskCategories || ['Inbox']);
+        storageManager.saveNoteWall(restoredWall);
+      }
+      window.location.reload();
+    } catch (error) {
+      setBackupError(error.message || 'Could not import this backup file.');
     }
   };
 
@@ -2293,7 +2285,7 @@ export default function NoteWall({ boardId = null }) {
                 role="status"
                 aria-live="polite"
                 aria-label={saveStatusLabel}
-                title={`${wallSaveStatus}${driveStatus ? ` · ${driveStatus}` : GOOGLE_DRIVE_CLIENT_ID ? ' · Private Drive save available' : ' · Drive setup optional'} · Attachment files stay in this browser and are not included in exports.`}
+                title={`${wallSaveStatus} · Attachment files are included in ZIP backups.`}
                 data-tooltip={saveStatusLabel}
               >
                 {wallSaveStatus.startsWith('Could not')
@@ -2312,6 +2304,14 @@ export default function NoteWall({ boardId = null }) {
               accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf,audio/*"
               aria-label="Choose image, PDF, or audio attachment"
               onChange={handleAttachmentSelection}
+            />
+            <input
+              ref={backupImportInputRef}
+              className="note-wall-file-input"
+              type="file"
+              accept={boardId ? '.json,application/json,.zip,application/zip' : '.json,application/json'}
+              aria-label={boardId ? 'Choose note wall JSON or ZIP backup' : 'Choose note wall backup JSON'}
+              onChange={handleBackupImportSelection}
             />
             <details className="note-wall-toolbar-menu note-wall-add-menu">
               <summary><Plus size={15} /> Add items <ChevronDown size={13} /></summary>
@@ -2536,19 +2536,50 @@ export default function NoteWall({ boardId = null }) {
           <details className="note-wall-toolbar-menu note-wall-export-menu">
             <summary aria-label="Export and backup"><Download size={15} /> Export <ChevronDown size={13} /></summary>
             <div className="note-wall-toolbar-menu-panel">
-              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls, visibleWebClips).catch((error) => setDriveStatus(error.message)); }}><Download size={15} /> Export PNG</button>
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallPNG(visibleNotes, wall, visibleTasks, visibleAttachments, attachmentUrls, visibleWebClips).catch((error) => setBackupError(error.message)); }}><Download size={15} /> Export PNG</button>
               <button type="button" onClick={(event) => {
                 closeToolbarMenu(event);
                 setPrintScale(Math.min(1, (window.innerWidth - 80) / boardWithTasks.width, (window.innerHeight - 160) / boardWithTasks.height));
                 setIsPrinting(true);
               }}><Printer size={15} /> Print / PDF</button>
               <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallMarkdown(notes, wall.attachments || [], wall.webClips || [], tasks); }}><FileText size={15} /> Export Markdown</button>
-              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallJSON(notes, categories, wall, tasks, boardId ? boardName : ''); }}><FileJson2 size={15} /> Export JSON</button>
-              <button type="button" onClick={(event) => { closeToolbarMenu(event); saveToDrive(); }}><Save size={15} /> Save to Drive</button>
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); exportWallJSON(notes, categories, wall, tasks, boardId ? boardName : '', taskCategories, boardId); }}><FileJson2 size={15} /> Export JSON</button>
+              {boardId && <button type="button" onClick={(event) => { closeToolbarMenu(event); downloadBackup(); }}><Download size={15} /> Download backup ZIP</button>}
+              <button type="button" onClick={(event) => { closeToolbarMenu(event); setBackupError(''); backupImportInputRef.current?.click(); }}><Upload size={15} /> Import JSON{boardId ? ' or ZIP' : ''}</button>
             </div>
           </details>
         </div>
       </header>
+
+      {backupError && <p className="note-wall-backup-error" role="alert">{backupError}</p>}
+      {boardId && backupCard && (
+        <aside className="note-wall-backup-card" role="region" aria-labelledby="note-wall-backup-title">
+          <div className="note-wall-backup-card-header">
+            <div>
+              <p className="note-wall-backup-kicker">BACKUP DOWNLOADED</p>
+              <h2 id="note-wall-backup-title">Save a copy to Google Drive</h2>
+            </div>
+            <button type="button" className="note-wall-backup-close" onClick={() => setBackupCard(null)} aria-label="Close backup instructions">
+              <X size={15} />
+            </button>
+          </div>
+          <p className="note-wall-backup-intro">
+            <code>{backupCard.filename}</code> contains this {boardId ? 'board' : 'workspace wall'} and {backupCard.mediaCount} media {backupCard.mediaCount === 1 ? 'file' : 'files'}.
+          </p>
+          <ol>
+            <li>Keep the ZIP intact for importing, or extract it on your device.</li>
+            <li>In Drive, create a <code>Kazedesk</code> folder and the exact <code>Workspace</code> or <code>Boards</code> folders shown below if needed.</li>
+            <li>Upload the complete ZIP to Drive, or upload <code>{backupCard.jsonPath}</code> together with its matching media folder. Keep older dates as backup history.</li>
+          </ol>
+          <div className="note-wall-backup-actions">
+            <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer">Open Google Drive</a>
+            <button type="button" onClick={() => setBackupCard(null)}>Done</button>
+          </div>
+          <p className="note-wall-backup-note">
+            Voice recordings, images, PDFs, and audio files are included in the ZIP. Upload is manual; Kazedesk does not connect to Drive.
+          </p>
+        </aside>
+      )}
 
       {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 ? (
         <div className="note-wall-empty">

@@ -45,6 +45,22 @@ export function validateWallAttachment(file) {
   };
 }
 
+export function validateWallAttachmentMetadata(file) {
+  if (!file || typeof file.name !== 'string' || typeof file.size !== 'number') {
+    throw new Error('Choose a valid image, PDF, or audio file.');
+  }
+  if (file.size > MAX_WALL_ATTACHMENT_SIZE) {
+    throw new Error(`Files must be 50 MB or smaller. "${file.name}" is too large.`);
+  }
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new Error('Supported files: JPG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, OGG, M4A, AAC, FLAC, and WebM audio.');
+  }
+  return {
+    mimeType: file.type,
+    mediaType: file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'audio',
+  };
+}
+
 function openDatabase() {
   if (typeof indexedDB === 'undefined') return Promise.reject(new Error(DB_ERROR));
   if (!databasePromise) {
@@ -92,6 +108,29 @@ async function transact(mode, operation) {
 
 export function saveWallAttachment(id, file) {
   return transact('readwrite', (store) => store.put({ id, blob: file }));
+}
+
+export async function saveWallAttachments(attachments) {
+  if (!Array.isArray(attachments)) throw new Error('Backup attachments are invalid.');
+  if (!attachments.length) return;
+  for (const attachment of attachments) {
+    if (attachment?.id === undefined || !attachment.blob || typeof attachment.blob.arrayBuffer !== 'function') {
+      throw new Error('A backup attachment is invalid.');
+    }
+    if (attachment.blob.size > MAX_WALL_ATTACHMENT_SIZE) {
+      throw new Error(`Files must be 50 MB or smaller. "${attachment.name || 'Attachment'}" is too large.`);
+    }
+  }
+
+  const database = await openDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    attachments.forEach(({ id, blob }) => store.put({ id, blob }));
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error(DB_ERROR));
+    transaction.onabort = () => reject(transaction.error || new Error(DB_ERROR));
+  });
 }
 
 export async function getWallAttachment(id) {

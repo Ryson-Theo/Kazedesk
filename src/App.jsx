@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
+import NotFoundPage from './pages/NotFoundPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import WorkspaceLoading from './components/WorkspaceLoading';
 import { storageManager } from './utils/localStorage';
 
@@ -39,6 +41,9 @@ export default function App() {
             <NoteWall />
           </Suspense>
         } />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );

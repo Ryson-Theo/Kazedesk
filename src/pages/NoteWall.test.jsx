@@ -133,7 +133,33 @@ describe('NoteWall', () => {
     expect(screen.getByRole('button', { name: 'Print / PDF' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export Markdown' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export JSON' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save to Drive' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download backup ZIP' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import JSON' })).toBeInTheDocument();
+  });
+
+  it('exports the workspace as JSON and does not offer a ZIP backup', async () => {
+    const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const createObjectURL = vi.fn(() => 'blob:workspace-json');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+
+    try {
+      render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+      fireEvent.click(screen.getByText('Export', { selector: 'summary' }));
+      expect(screen.queryByRole('button', { name: 'Download backup ZIP' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }));
+
+      expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: 'application/json' }));
+      const exported = JSON.parse(await createObjectURL.mock.calls[0][0].text());
+      expect(exported).toMatchObject({ context: 'workspace', type: 'sticky-note-wall', version: 2 });
+      expect(screen.getByLabelText('Choose note wall backup JSON')).toHaveAttribute('accept', '.json,application/json');
+      expect(anchorClick).toHaveBeenCalledOnce();
+    } finally {
+      if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL);
+      else delete URL.createObjectURL;
+      anchorClick.mockRestore();
+    }
   });
 
   it('uploads an image as a movable wall node, previews it, and removes its stored file', async () => {

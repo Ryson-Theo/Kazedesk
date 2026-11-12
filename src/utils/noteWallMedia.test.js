@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_WALL_ATTACHMENT_SIZE, validateWallAttachment } from './noteWallMedia';
+import { MAX_WALL_ATTACHMENT_SIZE, validateWallAttachment, validateWallAttachmentMetadata } from './noteWallMedia';
 
 describe('validateWallAttachment', () => {
   it.each([
@@ -13,5 +13,13 @@ describe('validateWallAttachment', () => {
   it('rejects unsupported formats and files above the size limit', () => {
     expect(() => validateWallAttachment(new File(['<svg/>'], 'image.svg', { type: 'image/svg+xml' }))).toThrow(/Supported files:/);
     expect(() => validateWallAttachment({ name: 'large.pdf', type: 'application/pdf', size: MAX_WALL_ATTACHMENT_SIZE + 1 })).toThrow(/50 MB or smaller/);
+  });
+
+  it('validates stored attachment metadata independently of a renamed display name', () => {
+    expect(validateWallAttachmentMetadata({
+      name: 'Voice memo',
+      type: 'audio/webm',
+      size: 12,
+    })).toEqual({ mimeType: 'audio/webm', mediaType: 'audio' });
   });
 });

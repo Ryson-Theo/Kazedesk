@@ -23,12 +23,19 @@ flowchart LR
     Board --> Attachments[(Browser IndexedDB)]
     Widgets --> Weather[Weather services]
     Widgets --> YouTube[YouTube embeds]
-    Wall -. Optional private JSON save .-> Drive[Google Drive]
-    Board -. Optional private JSON save .-> Drive
+    Wall --> WallJSON[Wall JSON]
+    Board --> BoardJSON[Board JSON]
+    Board --> BoardZIP[Board ZIP with media]
+    Dashboard --> DashboardJSON[Dashboard JSON]
+    WallJSON --> Download[Download to device]
+    BoardJSON --> Download
+    BoardZIP --> Download
+    DashboardJSON --> Download
+    Download -. Manual upload by user .-> Drive[Google Drive or other storage]
     Browser --> HostedMedia[Hosted media and fonts]
 ```
 
-The diagram shows the main runtime boundaries. Local data remains in the browser unless the user opts into a private Google Drive save. Weather lookups and embedded or hosted media are requests to third-party services.
+The diagram shows the main runtime boundaries. Local data remains in the browser unless the user explicitly downloads a backup. Any upload to Google Drive or other storage is performed manually by the user, outside Kazedesk. Weather lookups and embedded or hosted media are requests to third-party services.
 
 ## Source layout
 
@@ -43,6 +50,9 @@ The diagram shows the main runtime boundaries. Local data remains in the browser
 | `src/styles/` | Component and page stylesheets. |
 | `src/utils/localStorage.js` | Storage keys, persistence helpers, defaults, and legacy preference migration. |
 | `src/utils/noteWallMedia.js` | IndexedDB persistence for note-wall attachment files. |
+| `src/utils/backupArchive.js` | ZIP creation/parsing and attachment-manifest restoration helpers. |
+| `src/utils/noteWallBackup.js` | Wall JSON validation and custom-board ZIP archives. |
+| `src/utils/dashboardBackup.js` | Full dashboard JSON export and validation. |
 | `src/assets/` | Images and other bundled assets. |
 | `public/` | Static files copied directly into the build output. |
 
@@ -52,7 +62,7 @@ The diagram shows the main runtime boundaries. Local data remains in the browser
 
 The dashboard layout and user-created content are persisted in browser storage. `src/utils/localStorage.js` centralizes several storage operations and default values; some older widget settings still use their legacy storage keys directly. When changing persisted data, preserve existing keys or provide an explicit migration so existing users do not lose their work.
 
-The original `/wall` continues to read the dashboard's sticky notes and tasks. Independent boards are listed at `/wall/boards` and store their own notes, tasks, folders, layout, connections, comments, links, and attachment references under a separate local-storage key. Board-owned content does not write to dashboard note or task keys. Board notes preserve Markdown source and render a safe preview (headings, inline formatting, lists, links, images, tables, footnotes, and other common syntax) without interpreting embedded HTML. Markdown links in board-note source are automatically stored as note-relative paperclip cards when the note is created, edited, or loaded; existing offsets remain stable. Web clips can be attached to a note through their pin menu and store both the note ID and a relative offset, while their wall position remains synchronized for connections and exports. Attached links stack near the note's lower-right edge, can be dragged independently, and move with their note. Link cards render as compact rectangles, expand on hover, and expose edit/delete actions from an outside-click-dismissible menu. Folders can be created while editing a note. Attachment blobs remain in browser IndexedDB and are referenced by board-specific IDs; attachment file contents are not included in wall exports or Drive JSON saves.
+The original `/wall` continues to read the dashboard's sticky notes and tasks. Independent boards are listed at `/wall/boards` and store their own notes, tasks, folders, layout, connections, comments, links, and attachment references under a separate local-storage key. Board-owned content does not write to dashboard note or task keys. Board notes preserve Markdown source and render a safe preview (headings, inline formatting, lists, links, images, tables, footnotes, and other common syntax) without interpreting embedded HTML. Markdown links in board-note source are automatically stored as note-relative paperclip cards when the note is created, edited, or loaded; existing offsets remain stable. Web clips can be attached to a note through their pin menu and store both the note ID and a relative offset, while their wall position remains synchronized for connections and exports. Attached links stack near the note's lower-right edge, can be dragged independently, and move with their note. Link cards render as compact rectangles, expand on hover, and expose edit/delete actions from an outside-click-dismissible menu. Folders can be created while editing a note. Attachment blobs remain in browser IndexedDB and are referenced by board-specific IDs. Wall/dashboard JSON and board JSON exports contain references only; custom-board ZIP archives include attachment files.
 
 ```mermaid
 flowchart TD
@@ -81,9 +91,9 @@ The page components compose the UI; widgets encapsulate feature behavior. Shared
 ## Data and persistence
 
 - Data is scoped to the website origin and browser profile.
-- There is no automatic remote synchronization or server-side backup. Optional user-authorized Google Drive saves create private JSON copies of the dashboard wall or an independent board.
+- There is no automatic remote synchronization or server-side backup. Dashboard Settings and the main wall use JSON exports without attachment file contents. Custom boards support JSON references and ZIP archives that include their attachment files. Exports are generated locally; uploads to third-party storage are manual.
 - Workspace preferences, board definitions, and note-wall data are stored in `localStorage`; attachment file contents are stored in `IndexedDB`.
-- Wall JSON, Markdown, and image exports do not include attachment file contents. Export attachments separately if you need to move those files.
+- Wall and dashboard JSON exports store attachment references, which resolve only while the matching IndexedDB files remain in the same browser profile. Custom-board ZIPs carry media files for portable restoration.
 - The analytics widget derives its views from locally stored events.
 - Workspace export/import is intended for user-managed backups.
 - Local storage can be cleared by the browser or user and has finite capacity. Large custom backgrounds may exceed browser quotas.
@@ -117,7 +127,7 @@ The weather interaction is shown separately because it sends the user-entered ci
 - **Weather:** the configured city is sent to Open-Meteo's geocoding API; the returned coordinates are used for a current-conditions request to Open-Meteo's forecast API. Results are cached per browser.
 - **Web clips:** direct URL pins try to fetch public HTML metadata without credentials. Cross-origin restrictions mean many sites block this; the browser bookmarklet reads metadata on the source page as a fallback. Preview images are loaded from the image URL supplied by the page. Compact link cards size to the title/site label; hovering reveals available metadata without scrolling. Attached web clips and Markdown links retain independent drag offsets relative to their note.
 - **YouTube:** playlist playback uses YouTube content and browser embedding behavior.
-- **Google Drive:** optional note-wall saves use the user's authorization and the `drive.file` scope to create or update a private JSON file. Attachment files remain local and are not uploaded as part of these saves.
+- **Manual backups:** Kazedesk creates JSON locally for dashboard and wall exports, and ZIPs for custom-board backups. Custom-board ZIPs include media; JSON files store references only. Kazedesk makes no Google Drive API calls. Any upload to Drive or another provider is initiated by the user and governed by that provider's policies.
 - **Ambient visualizer:** optional system-audio capture uses `getDisplayMedia` and the Web Audio API. Browser permission, secure-context, and supported-audio-track requirements apply. Simulated mode does not access audio.
 - **Landing-page media and fonts:** some content is loaded from external providers. A network connection is needed for those resources.
 

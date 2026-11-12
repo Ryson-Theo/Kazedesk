@@ -19,28 +19,36 @@ export function getNotePlainText(note) {
   return (parsed.body.textContent || '').trim();
 }
 
-function downloadBlob(blob, filename) {
+export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportWallJSON(notes, categories, wall, tasks = [], boardName = '') {
+export function exportWallJSON(notes, categories, wall, tasks = [], boardName = '', taskCategories = ['Inbox'], boardId = null) {
+  const isBoard = Boolean(boardId || boardName);
   const data = {
     app: 'Kazedesk',
     type: 'sticky-note-wall',
-    version: 1,
+    context: isBoard ? 'board' : 'workspace',
+    version: 2,
     exportedAt: new Date().toISOString(),
-    ...(boardName ? { boardName } : {}),
+    ...(isBoard ? { boardId, boardName } : {}),
     categories,
     notes,
     tasks,
+    taskCategories,
     wall,
   };
-  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'kazedesk-note-wall.json');
+  downloadBlob(
+    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    `kazedesk-${isBoard ? 'board' : 'workspace'}-wall.json`,
+  );
   return data;
 }
 

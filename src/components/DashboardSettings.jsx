@@ -15,6 +15,7 @@ import {
   ImagePlus
 } from 'lucide-react';
 import { storageManager, getDefaultDashboardConfig } from '../utils/localStorage';
+import { createDashboardBackupJSON, parseDashboardBackupJSON } from '../utils/dashboardBackup';
 import { readBackgroundImage } from '../utils/backgroundImage';
 import SelectDropdown from './SelectDropdown';
 import '../styles/DashboardSettings.css';
@@ -42,6 +43,7 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
   const backgroundFileRef = useRef(null);
   const [backgroundImageError, setBackgroundImageError] = useState('');
   const [readingBackgroundImage, setReadingBackgroundImage] = useState(false);
+  const [backupStatus, setBackupStatus] = useState('');
   
   const [localConfig, setLocalConfig] = useState(() => ({
     ...getDefaultDashboardConfig(),
@@ -210,113 +212,94 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
     window.dispatchEvent(new Event('youtube-playlist-updated'));
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    setBackupStatus('Preparing dashboard JSON…');
     try {
-      const config = storageManager?.getDashboardConfig?.() || {};
-      const legacyBackground = localStorage.getItem('dashboard-bg');
-      let weatherSettings = null;
-      try {
-        weatherSettings = JSON.parse(localStorage.getItem('weather-widget') || 'null');
-      } catch {
-        weatherSettings = null;
-      }
-      const allData = {
-        schemaVersion: 3,
-        exportedAt: new Date().toISOString(),
-        config: legacyBackground && !config.backgroundImage ? { ...config, backgroundImage: legacyBackground } : config,
-        cardsLayout: storageManager?.getCardsLayout?.() || {},
-        notes: storageManager?.getStickyNotes?.() || [],
-        noteCategories: storageManager?.getNoteCategories?.() || ['Inbox'],
-        tasks: storageManager?.getTasks?.() || [],
-        taskCategories: storageManager?.getTaskCategories?.() || ['Inbox'],
-        pomodoroConfig: storageManager?.getPomodoroConfig?.() || {},
-        youtubePlaylists: storageManager?.getYouTubePlaylists?.() || [],
-        currentYouTubePlaylist: storageManager?.getCurrentYouTubePlaylist?.() || '',
-        weatherSettings,
-        analyticsEvents: storageManager?.getAnalyticsEvents?.() || [],
-      };
-
-      const dataStr = JSON.stringify(allData, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dashboard-backup-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      const { blob, filename } = createDashboardBackupJSON({
+        storage: storageManager.getBackupStorageSnapshot(),
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) {
-      console.error('Export failed:', e);
+      setBackupStatus('Dashboard JSON downloaded. Attachment files are not included.');
+    } catch (error) {
+      console.error('Dashboard JSON export failed:', error);
+      setBackupStatus(error.message || 'Could not create the dashboard JSON.');
     }
   };
 
-  const handleImportBackup = (file) => {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        if (!data || typeof data !== 'object' || Array.isArray(data)) {
-          throw new Error('Backup must be a JSON object.');
-        }
-        if (data?.config && typeof data.config === 'object' && !Array.isArray(data.config)) {
-          const importedConfig = {
-            ...getDefaultDashboardConfig(),
-            ...data.config,
-          };
-          storageManager?.saveDashboardConfig?.(importedConfig);
-          onConfigChange?.(importedConfig);
-          if (importedConfig.backgroundImage) {
-            localStorage.setItem('dashboard-bg', importedConfig.backgroundImage);
-          } else {
-            localStorage.removeItem('dashboard-bg');
-          }
-        }
-        if (Array.isArray(data?.notes)) {
-          storageManager?.saveStickyNotes?.(data.notes);
-        }
-        if (Array.isArray(data?.noteCategories)) {
-          storageManager?.saveNoteCategories?.(data.noteCategories);
-        }
-        if (Array.isArray(data?.tasks)) {
-          storageManager?.saveTasks?.(data.tasks);
-        }
-        if (Array.isArray(data?.taskCategories)) {
-          storageManager?.saveTaskCategories?.(data.taskCategories);
-        }
-        if (data?.cardsLayout && typeof data.cardsLayout === 'object' && !Array.isArray(data.cardsLayout)) {
-          storageManager?.saveCardsLayout?.(data.cardsLayout);
-        }
-        if (data?.pomodoroConfig && typeof data.pomodoroConfig === 'object') {
-          storageManager?.savePomodoroConfig?.(data.pomodoroConfig);
-        }
-        if (Array.isArray(data?.youtubePlaylists)) {
-          storageManager?.saveYouTubePlaylists?.(data.youtubePlaylists);
-        }
-        if (typeof data?.currentYouTubePlaylist === 'string') {
-          storageManager?.saveCurrentYouTubePlaylist?.(data.currentYouTubePlaylist);
-        } else if (Array.isArray(data?.youtubePlaylists)) {
-          storageManager?.saveCurrentYouTubePlaylist?.(data.youtubePlaylists[0]?.playlistId || '');
-        }
-        if (Object.hasOwn(data, 'weatherSettings')) {
-          if (data.weatherSettings && typeof data.weatherSettings === 'object' && !Array.isArray(data.weatherSettings)) {
-            localStorage.setItem('weather-widget', JSON.stringify(data.weatherSettings));
-          } else {
-            localStorage.removeItem('weather-widget');
-          }
-        }
-        if (Array.isArray(data?.analyticsEvents)) {
-          storageManager?.saveAnalyticsEvents?.(data.analyticsEvents);
-        }
-        window.location.reload();
-      } catch (error) {
-        console.error('Invalid JSON backup file:', error);
-        window.alert('Failed to import JSON backup. Please provide a valid dashboard export file.');
+  const importLegacyDashboardJson = (data) => {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('Backup must be a JSON object.');
+    }
+    if (data?.config && typeof data.config === 'object' && !Array.isArray(data.config)) {
+      const importedConfig = {
+        ...getDefaultDashboardConfig(),
+        ...data.config,
+      };
+      storageManager?.saveDashboardConfig?.(importedConfig);
+      onConfigChange?.(importedConfig);
+      if (importedConfig.backgroundImage) {
+        localStorage.setItem('dashboard-bg', importedConfig.backgroundImage);
+      } else {
+        localStorage.removeItem('dashboard-bg');
       }
-    };
-    reader.readAsText(file);
+    }
+    if (Array.isArray(data?.notes)) storageManager?.saveStickyNotes?.(data.notes);
+    if (Array.isArray(data?.noteCategories)) storageManager?.saveNoteCategories?.(data.noteCategories);
+    if (Array.isArray(data?.tasks)) storageManager?.saveTasks?.(data.tasks);
+    if (Array.isArray(data?.taskCategories)) storageManager?.saveTaskCategories?.(data.taskCategories);
+    if (data?.cardsLayout && typeof data.cardsLayout === 'object' && !Array.isArray(data.cardsLayout)) {
+      storageManager?.saveCardsLayout?.(data.cardsLayout);
+    }
+    if (data?.pomodoroConfig && typeof data.pomodoroConfig === 'object') {
+      storageManager?.savePomodoroConfig?.(data.pomodoroConfig);
+    }
+    if (Array.isArray(data?.youtubePlaylists)) storageManager?.saveYouTubePlaylists?.(data.youtubePlaylists);
+    if (typeof data?.currentYouTubePlaylist === 'string') {
+      storageManager?.saveCurrentYouTubePlaylist?.(data.currentYouTubePlaylist);
+    } else if (Array.isArray(data?.youtubePlaylists)) {
+      storageManager?.saveCurrentYouTubePlaylist?.(data.youtubePlaylists[0]?.playlistId || '');
+    }
+    if (Object.hasOwn(data, 'weatherSettings')) {
+      if (data.weatherSettings && typeof data.weatherSettings === 'object' && !Array.isArray(data.weatherSettings)) {
+        localStorage.setItem('weather-widget', JSON.stringify(data.weatherSettings));
+      } else {
+        localStorage.removeItem('weather-widget');
+      }
+    }
+    if (Array.isArray(data?.analyticsEvents)) storageManager?.saveAnalyticsEvents?.(data.analyticsEvents);
+  };
+
+  const handleImportBackup = async (file) => {
+    if (!file) return;
+    setBackupStatus('Reading backup…');
+    try {
+      if (file.type === 'application/json' || /\.json$/i.test(file.name)) {
+        const data = JSON.parse(await file.text());
+        if (data?.app === 'Kazedesk' && data?.type === 'complete-dashboard-backup') {
+          const backup = parseDashboardBackupJSON(data);
+          if (!window.confirm('Replace all current Kazedesk dashboard data on this device with this JSON backup?')) {
+            setBackupStatus('');
+            return;
+          }
+          storageManager.replaceBackupStorageSnapshot(backup.storage);
+        } else {
+          importLegacyDashboardJson(data);
+        }
+      } else {
+        throw new Error('Choose a dashboard JSON backup.');
+      }
+      window.location.reload();
+    } catch (error) {
+      console.error('Backup import failed:', error);
+      setBackupStatus(error.message || 'Could not import this backup.');
+    }
   };
 
   const handleImportClick = () => {
@@ -800,21 +783,22 @@ export default function DashboardSettings({ config, onConfigChange, onResetLayou
               </button>
               <button onClick={handleExport} className="settings-action-btn export">
                 <DownloadCloud size={14} />
-                <span>Export Backup</span>
+                <span>Export Dashboard JSON</span>
               </button>
               <button onClick={handleImportClick} className="settings-action-btn import">
                 <UploadCloud size={14} />
-                <span>Import JSON</span>
+                <span>Import Dashboard JSON</span>
               </button>
               <button onClick={handleClear} className="settings-action-btn clear">
                 <RotateCcw size={14} />
                 <span>Reset Cache</span>
               </button>
+              {backupStatus && <p className="settings-backup-status" role="status" aria-live="polite">{backupStatus}</p>}
             </div>
             <input
               type="file"
               ref={importFileRef}
-              accept="application/json"
+              accept=".json,application/json"
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />

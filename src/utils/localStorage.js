@@ -1,5 +1,5 @@
 // Centralize persistence for dashboard preferences and user-created content.
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   DASHBOARD_CONFIG: 'kazedesk_dashboard_config',
   CARDS_LAYOUT: 'kazedesk_cards_layout',
   MINIMIZED_WIDGETS: 'kazedesk_minimized_widgets',
@@ -14,6 +14,25 @@ const STORAGE_KEYS = {
   YOUTUBE_PLAYLISTS: 'kazedesk_youtube_playlists',
   CURRENT_YOUTUBE_PLAYLIST: 'kazedesk_current_youtube_playlist',
   ANALYTICS_EVENTS: 'kazedesk_analytics_events',
+};
+
+const LEGACY_STORAGE_KEYS = ['pomodoro', 'dashboard-bg', 'weather-widget', 'kazedesk-landing-theme'];
+const BACKUP_STORAGE_KEYS = [...Object.values(STORAGE_KEYS), ...LEGACY_STORAGE_KEYS];
+const BACKUP_JSON_TYPES = {
+  [STORAGE_KEYS.DASHBOARD_CONFIG]: 'object',
+  [STORAGE_KEYS.CARDS_LAYOUT]: 'object',
+  [STORAGE_KEYS.MINIMIZED_WIDGETS]: 'object',
+  [STORAGE_KEYS.STICKY_NOTES]: 'array',
+  [STORAGE_KEYS.NOTE_CATEGORIES]: 'array',
+  [STORAGE_KEYS.NOTE_WALL]: 'object',
+  [STORAGE_KEYS.NOTE_WALL_BOARDS]: 'array',
+  [STORAGE_KEYS.TASKS]: 'array',
+  [STORAGE_KEYS.TASK_CATEGORIES]: 'array',
+  [STORAGE_KEYS.POMODORO_CONFIG]: 'object',
+  [STORAGE_KEYS.YOUTUBE_PLAYLISTS]: 'array',
+  [STORAGE_KEYS.ANALYTICS_EVENTS]: 'array',
+  pomodoro: 'object',
+  'weather-widget': 'object',
 };
 
 function getEmptyNoteWall() {
@@ -54,6 +73,34 @@ function normalizeNoteWallBoard(board) {
     taskCategories: Array.isArray(board.taskCategories) && board.taskCategories.length ? board.taskCategories : ['Inbox'],
     wall: normalizeNoteWall(board.wall),
   };
+}
+
+export function validateBackupStorageSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new Error('The full backup storage data is invalid.');
+  }
+  const keys = Object.keys(snapshot);
+  if (keys.length !== BACKUP_STORAGE_KEYS.length
+    || BACKUP_STORAGE_KEYS.some((key) => !Object.hasOwn(snapshot, key))) {
+    throw new Error('The full backup is incomplete or was created by an unsupported version.');
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (!BACKUP_STORAGE_KEYS.includes(key) || (value !== null && typeof value !== 'string')) {
+      throw new Error('The full backup contains invalid browser storage data.');
+    }
+    if (value !== null && BACKUP_JSON_TYPES[key]) {
+      let parsed;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        throw new Error(`The full backup contains invalid ${key} data.`);
+      }
+      const validType = BACKUP_JSON_TYPES[key] === 'array' ? Array.isArray(parsed)
+        : parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+      if (!validType) throw new Error(`The full backup contains invalid ${key} data.`);
+    }
+  }
+  return snapshot;
 }
 
 export const storageManager = {
@@ -140,6 +187,32 @@ export const storageManager = {
       taskCategories: ['Inbox'],
       wall: getEmptyNoteWall(),
     };
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify([...boards, board]));
+    return board;
+  },
+  importNoteWallBoard: (source) => {
+    const boards = storageManager.getNoteWallBoards();
+    const originalName = normalizeBoardName(source.name);
+    const existingNames = new Set(boards.map((board) => board.name.toLocaleLowerCase()));
+    let name = originalName;
+    let suffixIndex = 1;
+    while (existingNames.has(name.toLocaleLowerCase())) {
+      const suffix = suffixIndex === 1 ? ' (imported)' : ` (imported ${suffixIndex})`;
+      name = `${originalName.slice(0, 80 - suffix.length).trimEnd()}${suffix}`;
+      suffixIndex += 1;
+    }
+    const now = new Date().toISOString();
+    const board = normalizeNoteWallBoard({
+      id: crypto.randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+      notes: source.notes,
+      tasks: source.tasks,
+      categories: source.categories,
+      taskCategories: source.taskCategories,
+      wall: source.wall,
+    });
     localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify([...boards, board]));
     return board;
   },
@@ -325,9 +398,34 @@ export const storageManager = {
     return localStorage.getItem(STORAGE_KEYS.CURRENT_YOUTUBE_PLAYLIST) || '';
   },
 
+  getBackupStorageSnapshot: () => Object.fromEntries(
+    BACKUP_STORAGE_KEYS.map((key) => [key, localStorage.getItem(key)]),
+  ),
+  replaceBackupStorageSnapshot: (snapshot) => {
+    validateBackupStorageSnapshot(snapshot);
+
+    const previous = Object.fromEntries(BACKUP_STORAGE_KEYS.map((key) => [key, localStorage.getItem(key)]));
+    try {
+      BACKUP_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+      BACKUP_STORAGE_KEYS.forEach((key) => {
+        if (snapshot[key] !== null) localStorage.setItem(key, snapshot[key]);
+      });
+    } catch (error) {
+      try {
+        BACKUP_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+        BACKUP_STORAGE_KEYS.forEach((key) => {
+          if (previous[key] !== null) localStorage.setItem(key, previous[key]);
+        });
+      } catch (rollbackError) {
+        throw new Error(`Could not restore browser data, and rollback failed: ${rollbackError.message || 'storage is unavailable.'}`);
+      }
+      throw new Error(`Could not restore browser data: ${error.message || 'storage is unavailable.'}`);
+    }
+  },
+
   // Remove Kazedesk data, including keys used by older versions.
   clearAllData: () => {
-    [...Object.values(STORAGE_KEYS), 'pomodoro', 'weather-widget', 'dashboard-bg'].forEach((key) => {
+    [...Object.values(STORAGE_KEYS), ...LEGACY_STORAGE_KEYS].forEach((key) => {
       localStorage.removeItem(key);
     });
   },

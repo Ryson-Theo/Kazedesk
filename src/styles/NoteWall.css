@@ -271,6 +271,42 @@
 
 .note-wall-export-actions { order: 3; flex: 0 0 auto; flex-wrap: nowrap; gap: 0.3rem; margin-left: auto; }
 
+.note-wall-backup-card,
+.note-wall-backup-error {
+  position: fixed;
+  z-index: 40;
+  top: 78px;
+  right: 16px;
+  width: min(440px, calc(100vw - 32px));
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 9px;
+  background: var(--lp-surface-raised);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  color: var(--lp-muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.note-wall-backup-error { border-color: color-mix(in srgb, #e58b8b 55%, var(--lp-line)); color: #e58b8b; }
+.note-wall-backup-card { max-height: calc(100vh - 96px); overflow-y: auto; }
+.note-wall-backup-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.note-wall-backup-kicker { margin: 0 0 4px; color: var(--lp-accent); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.1em; }
+.note-wall-backup-card h2 { margin: 0; color: var(--lp-text); font-size: 0.95rem; font-weight: 800; }
+.note-wall-backup-close { display: grid; width: 30px; min-width: 30px; height: 30px; place-items: center; padding: 0; border: 1px solid var(--lp-line); border-radius: 50%; background: transparent; color: var(--lp-muted); cursor: pointer; }
+.note-wall-backup-intro { margin: 12px 0; color: var(--lp-muted); overflow-wrap: anywhere; }
+.note-wall-backup-card ol { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--lp-muted); }
+.note-wall-backup-card li { padding-left: 2px; }
+.note-wall-backup-card code { color: var(--lp-text); font-size: 0.9em; overflow-wrap: anywhere; }
+.note-wall-backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 15px; }
+.note-wall-backup-actions a,
+.note-wall-backup-actions button { min-height: 34px; padding: 0.45rem 0.7rem; border: 1px solid var(--lp-line); border-radius: 7px; background: var(--lp-surface); color: var(--lp-text); font: inherit; font-size: 0.68rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.note-wall-backup-actions a { border-color: var(--lp-accent); background: var(--lp-accent); color: var(--lp-accent-ink); }
+.note-wall-backup-actions a:hover,
+.note-wall-backup-actions button:hover { filter: brightness(1.08); }
+.note-wall-backup-note { margin: 12px 0 0; color: var(--lp-soft); font-size: 0.65rem; line-height: 1.6; }
+
 .note-wall-export-actions button,
 .note-wall-link-form button,
 .note-wall-empty > a {

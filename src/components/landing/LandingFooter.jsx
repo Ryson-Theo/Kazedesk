@@ -1,4 +1,5 @@
 import { ArrowUpRight, ArrowUp, Heart } from "lucide-react";
+import { Link } from "react-router-dom";
 import darkFooterImage from "../../assets/footer.jpg";
 import lightFooterImage from "../../assets/footer light.jpg";
 import { LANDING_LINKS } from "./landingLinks";
@@ -39,6 +40,7 @@ export default function LandingFooter({ theme = "dark" }) {
       <div className="footer-bottomline">
         <span className="footer-made">Made with <Heart size={12} fill="currentColor" /> for focused days.</span>
         <span className="footer-copyright">Built by <a href={LANDING_LINKS.portfolio} target="_blank" rel="noopener noreferrer">Ribin K Roy</a> · © 2026</span>
+        <Link className="footer-privacy-link" to="/privacy">Privacy</Link>
         <a className="footer-back-to-top" href="#top">Back to top <ArrowUp size={13} /></a>
       </div>
     </footer>

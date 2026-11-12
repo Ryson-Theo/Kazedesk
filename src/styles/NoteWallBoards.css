@@ -104,6 +104,10 @@
 .note-wall-board-rename input:focus-visible { outline: 2px solid var(--boards-accent); outline-offset: 2px; }
 .note-wall-board-create-button { min-height: 40px; border-color: var(--boards-accent); background: var(--boards-accent); color: #172016; font-weight: 800; }
 .note-wall-board-create-button:disabled { cursor: not-allowed; opacity: 0.5; }
+.note-wall-board-import { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 1rem 1.1rem; border: 1px solid var(--boards-line); border-radius: 9px; background: var(--boards-surface); }
+.note-wall-board-import h3 { margin: 0 0 0.2rem; font-size: 0.76rem; }
+.note-wall-board-import p { max-width: 430px; margin: 0; color: var(--boards-muted); font-size: 0.68rem; line-height: 1.5; }
+.note-wall-board-import button:disabled { cursor: wait; opacity: 0.6; }
 .note-wall-board-rename { display: flex; width: 100%; align-items: center; flex-wrap: wrap; gap: 0.45rem; }
 .note-wall-board-rename label { width: 100%; }
 .note-wall-board-rename input { flex: 1 1 180px; }
@@ -124,4 +128,5 @@
   .note-wall-board-entry-actions { width: 100%; }
   .note-wall-board-open { margin-right: auto; }
   .note-wall-board-create > div { flex-direction: column; }
+  .note-wall-board-import { align-items: flex-start; flex-direction: column; }
 }
