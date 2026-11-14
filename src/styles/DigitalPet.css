@@ -32,17 +32,7 @@
   display: block;
   width: 70px;
   height: 70px;
-  overflow: visible;
-}
-
-.piper-crest {
-  transform-origin: 52px 23px;
-  animation: piper-crest-sway 2.8s ease-in-out infinite;
-}
-
-.piper-wing {
-  transform-origin: 34px 66px;
-  animation: piper-wing-flick 4.6s ease-in-out 1.2s infinite;
+  object-fit: contain;
 }
 
 .digital-pet-message {
@@ -80,18 +70,6 @@
   50% { margin-top: -3px; }
 }
 
-@keyframes piper-crest-sway {
-  0%, 78%, 100% { rotate: 0deg; }
-  86% { rotate: 8deg; }
-  93% { rotate: -5deg; }
-}
-
-@keyframes piper-wing-flick {
-  0%, 86%, 100% { rotate: 0deg; }
-  90% { rotate: -15deg; }
-  95% { rotate: 5deg; }
-}
-
 @keyframes piper-message {
   from { opacity: 0; transform: translateY(4px) scale(0.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -121,8 +99,6 @@
 @media (prefers-reduced-motion: reduce) {
   .digital-pet-anchor,
   .digital-pet-perch,
-  .piper-crest,
-  .piper-wing,
   .digital-pet-message {
     animation: none;
   }

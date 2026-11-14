@@ -12,6 +12,7 @@
   --lp-accent-ink: #172016;
   --lp-scrollbar-thumb: color-mix(in srgb, var(--lp-accent) 28%, var(--lp-line));
   --lp-scrollbar-thumb-hover: var(--lp-accent);
+  position: relative;
   display: flex;
   width: 100%;
   height: 100vh;
@@ -154,9 +155,10 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.8rem;
-  padding: 0.7rem 1rem 0.65rem;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
+  min-height: 60px;
+  padding: 0.45rem 0.7rem;
   border-bottom: 1px solid var(--lp-line);
   background: var(--lp-bg);
   position: relative;
@@ -164,7 +166,6 @@
 }
 
 .note-wall-heading,
-.note-wall-heading > a,
 .note-wall-export-actions,
 .note-wall-export-actions button,
 .note-wall-controls,
@@ -173,28 +174,36 @@
   align-items: center;
 }
 
-.note-wall-heading { order: 1; flex: 0 1 270px; min-width: 0; align-self: stretch; gap: 0.65rem; }
+.note-wall-heading { order: 1; flex: 0 1 250px; min-width: 0; align-self: stretch; gap: 0.85rem; }
 
-.note-wall-heading > a {
+.note-wall-sidebar-toggle {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
   place-items: center;
+  padding: 0;
   border: 1px solid var(--lp-line);
   border-radius: 8px;
   background: var(--lp-surface);
   color: var(--lp-muted);
-  text-decoration: none;
+  cursor: pointer;
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-.note-wall-heading > a:hover { border-color: var(--lp-accent); background: var(--lp-surface-raised); color: var(--lp-text); }
-.note-wall-heading > a:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
-.note-wall-heading-copy { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 0.2rem; }
+.note-wall-sidebar-toggle:hover,
+.note-wall-sidebar-toggle.is-active {
+  border-color: var(--lp-accent);
+  background: color-mix(in srgb, var(--lp-accent) 10%, var(--lp-surface));
+  color: var(--lp-accent);
+}
+
+.note-wall-sidebar-toggle:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
+
+.note-wall-heading-copy { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 0.2rem; margin-left: 1rem; }
 
 .note-wall-heading h1 {
-  overflow: hidden;
+  min-width: 0;
   margin: 0;
   font-family: "Instrument Serif", Georgia, serif;
   font-size: 1.3rem;
@@ -203,6 +212,88 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.note-wall-board-switcher { position: relative; overflow: visible; }
+.note-wall-board-switcher-trigger {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.note-wall-board-switcher-trigger > span { overflow: hidden; text-overflow: ellipsis; }
+.note-wall-board-switcher-trigger > svg { flex: 0 0 auto; opacity: 0; transform: translateY(-1px); transition: opacity 140ms ease, transform 140ms ease; }
+.note-wall-board-switcher-trigger:hover > svg,
+.note-wall-board-switcher-trigger:focus-visible > svg,
+.note-wall-board-switcher-trigger[aria-expanded="true"] > svg { opacity: 0.8; transform: translateY(0); }
+.note-wall-board-switcher-trigger:focus-visible { border-radius: 3px; outline: 2px solid var(--lp-accent); outline-offset: 3px; }
+
+.note-wall-board-switcher-menu {
+  --switcher-bg: #171d19;
+  --switcher-surface: #202923;
+  --switcher-border: #38433b;
+  --switcher-text: #edf2ed;
+  --switcher-muted: #a7b2a8;
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  width: min(290px, calc(100vw - 24px));
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--switcher-border);
+  border-radius: 12px;
+  background: var(--switcher-bg);
+  color: var(--switcher-text);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+.note-wall-board-switcher-menu.is-light {
+  --switcher-bg: #fff;
+  --switcher-surface: #f0f3ef;
+  --switcher-border: #d3dbd4;
+  --switcher-text: #17211c;
+  --switcher-muted: #68756c;
+}
+.note-wall-board-switcher-shortcuts,
+.note-wall-board-switcher-recent { display: flex; flex-direction: column; gap: 0.35rem; }
+.note-wall-board-switcher-shortcuts { padding-bottom: 0.55rem; border-bottom: 1px solid var(--switcher-border); }
+.note-wall-board-switcher-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--switcher-text);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+.note-wall-board-switcher-menu button:hover,
+.note-wall-board-switcher-menu button:focus-visible { outline: none; background: var(--switcher-surface); }
+.note-wall-board-switcher-menu button:focus-visible { box-shadow: inset 0 0 0 2px var(--lp-accent, #8cae8c); }
+.note-wall-board-switcher-menu button:disabled { color: var(--switcher-muted); cursor: default; }
+.note-wall-board-switcher-hint { color: var(--switcher-muted); font-size: 0.66rem; }
+.note-wall-board-switcher-recent { padding-top: 0.2rem; }
+.note-wall-board-switcher-recent h2 { margin: 0.3rem 0.35rem 0.2rem; color: var(--switcher-muted); font-size: 0.63rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.note-wall-board-switcher-recent p { margin: 0.25rem 0.35rem; color: var(--switcher-muted); font-size: 0.73rem; }
+.note-wall-board-switcher-confirm { width: min(440px, 100%); }
 
 .note-wall-heading-meta {
   display: flex;
@@ -269,7 +360,7 @@
 
 .note-wall-heading-meta .note-wall-save-indicator:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
 
-.note-wall-export-actions { order: 3; flex: 0 0 auto; flex-wrap: nowrap; gap: 0.3rem; margin-left: auto; }
+.note-wall-export-actions { order: 3; flex: 0 0 auto; flex-wrap: nowrap; gap: 0.25rem; margin-left: 0; }
 
 .note-wall-backup-card,
 .note-wall-backup-error {
@@ -415,7 +506,7 @@
 .note-wall-controls {
   order: 2;
   display: flex;
-  flex: 1 1 760px;
+  flex: 1 1 auto;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -428,9 +519,39 @@
   min-width: 0;
   min-height: 36px;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.3rem;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
 }
+
+.note-wall-toolbar-main > * { flex: 0 0 auto; }
+.note-wall-toolbar-main > .note-wall-attachment-status { flex: 0 1 120px; }
+.note-wall-tool-toggle span,
+.note-wall-undo-redo button span,
+.note-wall-board-actions button span,
+.note-wall-primary-action[aria-label="Tidy & center"] span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.note-wall-toolbar-main .note-wall-tool-toggle,
+.note-wall-toolbar-main .note-wall-primary-action[aria-label="Tidy & center"],
+.note-wall-undo-redo button,
+.note-wall-board-actions button {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.note-wall-toolbar-main .note-wall-undo-redo { gap: 0.2rem; }
+.note-wall-toolbar-main .note-wall-group-filter { gap: 0.25rem; }
+.note-wall-toolbar-main .note-wall-group-filter select { min-width: 92px; }
+.note-wall-board-actions { gap: 0.15rem; }
+.note-wall-toolbar-main .note-wall-board-actions .note-wall-zoom-level { width: 50px; min-width: 50px; }
 
 .note-wall-group-filter,
 .note-wall-color-control {
@@ -875,6 +996,15 @@
   height: 100%;
   overflow: visible;
   overflow: visible;
+}
+
+.note-wall-group-thread {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 3 8;
+  stroke-linecap: round;
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .note-wall-connection-line,
@@ -2011,6 +2141,282 @@
 .note-wall-task.is-standalone .note-wall-task-move > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-wall-task.is-standalone .note-wall-task-details { max-width: 230px; }
 
+.note-wall-card.is-multi-selected,
+.note-wall-attachment.is-multi-selected,
+.note-wall-webclip.is-multi-selected,
+.note-wall-task.is-multi-selected {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 3px;
+  z-index: 12;
+}
+
+.note-wall-board.is-selecting-items [data-node-id][data-node-type]:not([data-node-type="group"]) {
+  cursor: pointer;
+}
+
+.note-wall-selection-box {
+  position: absolute;
+  z-index: 20;
+  border: 1px solid var(--lp-accent);
+  background: color-mix(in srgb, var(--lp-accent) 15%, transparent);
+  pointer-events: none;
+}
+
+.note-wall-selection-box.is-crossing {
+  border-style: dashed;
+  border-color: #72d5ff;
+  background: color-mix(in srgb, #72d5ff 12%, transparent);
+}
+
+.note-wall-sidebar {
+  position: relative;
+  display: flex;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  flex: 0 0 0;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow: hidden;
+  padding: 0;
+  border-right: 0 solid var(--lp-line);
+  background: var(--lp-surface);
+  color: var(--lp-text);
+  visibility: hidden;
+  transition:
+    flex-basis 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-width 240ms ease,
+    padding 240ms ease,
+    visibility 240ms;
+}
+
+.note-wall-sidebar.is-open {
+  width: 260px;
+  flex-basis: 260px;
+  padding: 0.75rem 0.65rem;
+  border-right-width: 1px;
+  visibility: visible;
+}
+
+.note-wall-sidebar-header {
+  display: flex;
+  min-height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+}
+
+.note-wall-sidebar-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--lp-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.note-wall-sidebar-mark {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--lp-accent) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lp-accent) 12%, transparent);
+  color: var(--lp-accent);
+}
+
+.note-wall-sidebar .branched-menu {
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.note-wall-sidebar .branched-menu__head {
+  font-size: 0.75rem;
+}
+
+.note-wall-sidebar .branched-menu__item {
+  font-size: 0.7rem;
+}
+
+.note-wall-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.note-wall-content-main {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.note-wall-content-main > .note-wall-empty,
+.note-wall-content-main > .note-wall-scroll {
+  min-width: 0;
+}
+
+.note-wall-group-folder {
+  position: absolute;
+  z-index: 12;
+  display: flex;
+  width: 240px;
+  min-height: 112px;
+  align-items: center;
+  justify-content: center;
+  padding: 1.1rem 0.8rem 0.7rem;
+  border: 1px solid var(--group-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--group-color) 20%, var(--lp-surface-raised));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.note-wall-group-folder.is-expanded {
+  min-height: 48px;
+  justify-content: flex-start;
+  padding: 0.35rem 2.4rem;
+  background: color-mix(in srgb, var(--group-color) 13%, var(--lp-surface-raised));
+}
+
+.note-wall-group-folder-open {
+  display: flex;
+  width: 100%;
+  min-height: 70px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--lp-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.note-wall-group-folder.is-expanded .note-wall-group-folder-open {
+  min-height: 40px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  text-align: left;
+}
+
+.note-wall-group-folder-open > svg { color: var(--group-color); }
+.note-wall-group-folder-open > strong { max-width: 100%; overflow-wrap: anywhere; font-size: 0.82rem; }
+.note-wall-group-folder-open > span { color: var(--lp-muted); font-size: 0.63rem; }
+.note-wall-group-folder-move,
+.note-wall-group-folder-options {
+  position: absolute;
+  z-index: 1;
+  top: 0.35rem;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lp-muted);
+  cursor: pointer;
+}
+
+.note-wall-group-folder-move { left: 0.35rem; cursor: grab; touch-action: none; }
+.note-wall-group-folder-options { right: 0.35rem; }
+.note-wall-group-folder-move:hover,
+.note-wall-group-folder-options:hover { border-color: var(--lp-line); color: var(--lp-text); }
+.note-wall-group-rename { display: flex; width: 100%; align-items: center; gap: 0.25rem; }
+.note-wall-group-rename input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.35rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 5px;
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.7rem;
+}
+.note-wall-group-rename button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--lp-line);
+  border-radius: 5px;
+  background: var(--lp-surface-raised);
+  color: var(--lp-text);
+  cursor: pointer;
+}
+.note-wall-group-rename button:disabled { cursor: not-allowed; opacity: 0.5; }
+.note-wall-group-context-menu {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  width: 190px;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 8px;
+  background: var(--lp-surface-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.note-wall-group-context-menu button,
+.note-wall-group-context-menu label {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.68rem;
+  text-align: left;
+}
+.note-wall-group-context-menu button { cursor: pointer; }
+.note-wall-group-context-menu button:hover { background: var(--lp-surface); color: var(--lp-accent); }
+.note-wall-group-context-menu label { justify-content: space-between; color: var(--lp-muted); }
+.note-wall-group-spread-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.45rem;
+  border-top: 1px solid var(--lp-line);
+}
+.note-wall-group-spread-options > span { color: var(--lp-muted); font-size: 0.64rem; }
+.note-wall-group-spread-options > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem; }
+.note-wall-group-context-menu .note-wall-group-spread-options button {
+  min-height: 28px;
+  justify-content: center;
+  padding: 0.25rem;
+  background: var(--lp-surface);
+  font-size: 0.64rem;
+}
+.note-wall-group-context-menu .note-wall-group-spread-options button[aria-pressed="true"] {
+  color: var(--lp-accent);
+  box-shadow: inset 0 0 0 1px var(--lp-accent);
+}
+.note-wall-group-context-menu input[type="color"] { width: 34px; height: 24px; padding: 2px; border: 1px solid var(--lp-line); border-radius: 4px; background: var(--lp-surface); cursor: pointer; }
+
 .note-wall-task-move {
   display: flex;
   width: 100%;
@@ -2513,36 +2919,47 @@
 }
 
 @media (max-width: 900px) {
-  .note-wall-toolbar { align-items: center; padding: 0.65rem 0.8rem; }
-  .note-wall-heading { flex-basis: min(60%, 390px); }
-  .note-wall-export-actions { order: 2; }
-  .note-wall-controls { order: 3; flex-basis: 100%; }
-  .note-wall-attachment-status { max-width: 100%; }
+  .note-wall-toolbar { align-items: center; gap: 0.35rem; padding: 0.45rem 0.55rem; }
+  .note-wall-heading { flex: 0 1 190px; }
+  .note-wall-heading h1 { font-size: 1.08rem; }
+  .note-wall-heading-meta { gap: 0.3rem; }
+  .note-wall-heading-meta > span[aria-label*="attachment"],
+  .note-wall-heading-meta > span[aria-label*="link"] { display: none; }
+  .note-wall-controls { order: 2; flex: 1 1 auto; }
+  .note-wall-toolbar-main { gap: 0.3rem; }
+  .note-wall-toolbar-main .note-wall-attachment-status { display: none; }
+  .note-wall-export-actions { order: 3; margin-left: 0; }
+  .note-wall-export-actions .note-wall-theme-toggle { width: 32px; min-width: 32px; height: 32px; }
   .note-wall-board-actions { margin-left: 0; }
 }
 
 @media (max-width: 520px) {
-  .note-wall-toolbar { gap: 0.5rem; padding: 0.55rem 0.65rem; }
-  .note-wall-heading { flex-basis: calc(100% - 112px); align-items: center; gap: 0.45rem; }
-  .note-wall-heading h1 { font-size: 1.05rem; }
-  .note-wall-heading > a { width: 28px; height: 28px; }
+  .note-wall-toolbar { gap: 0.4rem; padding: 0.4rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .note-wall-toolbar::-webkit-scrollbar { display: none; }
+  .note-wall-heading { flex: 0 0 auto; max-width: 44vw; align-items: center; gap: 0.7rem; }
+  .note-wall-heading h1 { max-width: 24vw; font-size: 0.95rem; }
+  .note-wall-sidebar-toggle { width: 30px; min-width: 30px; height: 30px; }
   .note-wall-heading-meta { gap: 0.35rem; font-size: 0.55rem; }
   .note-wall-heading-meta > span:not(.note-wall-save-indicator) { gap: 0.12rem; }
   .note-wall-heading-meta > span:not(.note-wall-save-indicator) svg { width: 10px; height: 10px; }
-  .note-wall-export-actions { gap: 0.3rem; }
-  .note-wall-export-actions .note-wall-toolbar-menu > summary { padding: 0.35rem 0.5rem; }
+  .note-wall-export-actions { gap: 0.35rem; }
+  .note-wall-export-actions .note-wall-toolbar-menu > summary { min-height: 32px; padding: 0.3rem 0.4rem; }
   .note-wall-export-menu .note-wall-toolbar-menu-panel { right: 0; left: auto; }
+
+  .note-wall-add-menu > summary { gap: 0.25rem; padding-right: 0.45rem; padding-left: 0.45rem; }
   .note-wall-export-menu .note-wall-toolbar-menu-panel { top: auto; bottom: calc(100% + 0.4rem); }
-  .note-wall-controls { flex-basis: 100%; }
-  .note-wall-toolbar-main { gap: 0.35rem; }
-  .note-wall-primary-action,
-  .note-wall-secondary-action,
-  .note-wall-tool-toggle,
-  .note-wall-undo-redo button { min-height: 32px; padding: 0.3rem 0.45rem; font-size: 0.64rem; }
+  .note-wall-controls { flex: 0 0 auto; width: max-content; }
+  .note-wall-toolbar-main { width: max-content; gap: 0.35rem; }
+  .note-wall-toolbar-main .note-wall-tool-toggle,
+  .note-wall-toolbar-main .note-wall-primary-action[aria-label="Tidy & center"],
+  .note-wall-undo-redo button,
+  .note-wall-board-actions button { width: 32px; min-width: 32px; min-height: 32px; }
+  .note-wall-toolbar-main .note-wall-board-actions .note-wall-zoom-level { width: 44px; min-width: 44px; }
   .note-wall-group-filter { gap: 0.3rem; font-size: 0.64rem; }
   .note-wall-group-filter select { min-width: 0; max-width: 125px; }
   .note-wall-toolbar-menu > summary,
   .note-wall-connection-tools > summary { min-height: 32px; padding: 0.3rem 0.45rem; font-size: 0.64rem; }
+  .note-wall-connections-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); }
   .note-wall-connection-panel {
     width: auto;
     max-width: none;
@@ -2558,6 +2975,8 @@
 }
 
 @media (max-width: 600px) {
+  .note-wall-sidebar.is-open { width: min(260px, 72vw); flex-basis: min(260px, 72vw); }
+
   .note-wall-connection-panel {
     box-sizing: border-box;
     gap: 0.45rem;
@@ -2661,6 +3080,7 @@
   html, body, #root { width: 100%; height: auto; overflow: visible !important; background: #fff !important; }
   .note-wall-page { display: block; height: auto; overflow: visible; background: #fff; color: #111827; }
   .note-wall-toolbar, .note-wall-controls, .note-wall-footer, .note-wall-drag-handle, .note-wall-note-actions-menu, .note-wall-attachment-move, .note-wall-attachment-remove, .note-wall-webclip-move, .note-wall-webclip-remove, .note-wall-unlink, .note-wall-connect-handle, .note-wall-resize-handle, .note-wall-task-move, .note-wall-board-task-toggle, .note-wall-board-task-remove, .note-wall-task-connect, .note-wall-task-details, .note-wall-modal-backdrop { display: none !important; }
+  .note-wall-sidebar { display: none !important; }
   .note-wall-scroll { overflow: visible; background: #fff; }
   .note-wall-board { min-width: 0; min-height: 0; transform: scale(var(--wall-print-scale)); transform-origin: top left; }
   .note-wall-connections { print-color-adjust: exact; }

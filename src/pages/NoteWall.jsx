@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
-import { AlignCenter, ArrowLeft, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Globe2, GripVertical, Hand, Link2, MessageCircle, Mic, Moon, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlignCenter, CheckCircle2, ChevronDown, Circle, Download, Ellipsis, Eye, EyeOff, FileJson2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Globe2, GripVertical, Hand, Link2, Menu, MessageCircle, Mic, Moon, MousePointer2, Pause, Pencil, Pin, Play, Plus, Printer, Redo2, Save, Send, Square, StickyNote, Sun, Trash2, Undo2, Unlink, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
+import BoardItemSidebar from '../components/BoardItemSidebar';
 import MarkdownContent from '../components/MarkdownContent';
 import { storageManager } from '../utils/localStorage';
 import { downloadBlob, exportWallJSON, exportWallMarkdown, exportWallPNG, getNotePlainText, getWallNoteTitle } from '../utils/noteWallExports';
@@ -35,6 +36,11 @@ const DEFAULT_ATTACHMENT_SIZE = { width: 300, height: 250 };
 const DEFAULT_AUDIO_SIZE = { width: 360, height: 108 };
 const DEFAULT_WEB_CLIP_SIZE = { width: 320, height: 260 };
 const DEFAULT_BOARD_TASK_CATEGORIES = ['Inbox'];
+const GROUP_SPREAD_DIRECTIONS = ['right', 'left', 'above', 'below'];
+const GROUP_FOLDER_WIDTH = 240;
+const GROUP_FOLDER_HEIGHT = 48;
+const GROUP_SPREAD_GAP = 64;
+const GROUP_SPREAD_ITEM_GAP = 28;
 
 function ConnectionSelect({ label, value, options, onChange, className = '' }) {
   const id = useId();
@@ -457,6 +463,7 @@ function withoutWallAttachment(wall, id) {
     positions,
     sizes,
     comments,
+    groups: withoutGroupMember(wall.groups, 'attachment', id),
     connections: wall.connections.filter((connection) =>
       !((connection.fromType === 'attachment' && connection.from === id)
         || (connection.toType === 'attachment' && connection.to === id))),
@@ -476,6 +483,7 @@ function withoutWallWebClip(wall, id) {
     positions,
     sizes,
     comments,
+    groups: withoutGroupMember(wall.groups, 'webclip', id),
     connections: wall.connections.filter((connection) =>
       !((connection.fromType === 'webclip' && String(connection.from) === String(id))
         || (connection.toType === 'webclip' && String(connection.to) === String(id)))),
@@ -501,6 +509,7 @@ function withoutWallBoardNode(wall, type, id) {
     positions,
     taskPositions,
     comments,
+    groups: withoutGroupMember(wall.groups, type, id),
     connections: wall.connections.filter((connection) => {
       const fromType = connection.fromType || 'note';
       const toType = connection.toType || 'note';
@@ -508,6 +517,116 @@ function withoutWallBoardNode(wall, type, id) {
         || (toType === type && String(connection.to) === String(id)));
     }),
   };
+}
+
+function withoutGroupMember(groups = [], type, id) {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.type !== type || String(item.id) !== String(id)),
+    }))
+    .filter((group) => group.items.length);
+}
+
+function getWallItemPosition(wall, type, id) {
+  const positions = type === 'task' ? wall.taskPositions : wall.positions;
+  return positions?.[id] || { x: 30, y: 30 };
+}
+
+function getGroupItemSize(wall, item) {
+  if (item.type === 'task') return { width: 180, height: 42 };
+  if (wall.sizes?.[item.id]) return wall.sizes[item.id];
+  if (item.type === 'attachment') {
+    const attachment = (wall.attachments || []).find((entry) => String(entry.id) === String(item.id));
+    return attachment?.mediaType === 'audio' ? DEFAULT_AUDIO_SIZE : DEFAULT_ATTACHMENT_SIZE;
+  }
+  if (item.type === 'webclip') return DEFAULT_WEB_CLIP_SIZE;
+  return { width: CARD_WIDTH, height: CARD_HEIGHT };
+}
+
+function getGroupSpreadLayout(group, wall, direction) {
+  const items = group.items.map((item) => ({ ...item, size: getGroupItemSize(wall, item) }));
+  const maxWidth = Math.max(...items.map((item) => item.size.width));
+  const maxHeight = Math.max(...items.map((item) => item.size.height));
+  const groupPosition = { ...(group.position || { x: 30, y: 30 }) };
+
+  if (direction === 'left') groupPosition.x = Math.max(groupPosition.x, maxWidth + GROUP_SPREAD_GAP + 20);
+  if (direction === 'above') groupPosition.y = Math.max(groupPosition.y, maxHeight + GROUP_SPREAD_GAP + 20);
+
+  const positions = { ...wall.positions };
+  const taskPositions = { ...(wall.taskPositions || {}) };
+  const groupedItems = new Set(group.items.map((item) => getWallItemKey(item.type, item.id)));
+  let cursorX = groupPosition.x;
+  let cursorY = groupPosition.y;
+
+  items.forEach((item) => {
+    const previousPosition = getWallItemPosition(wall, item.type, item.id);
+    let position;
+    if (direction === 'right') {
+      position = { x: groupPosition.x + GROUP_FOLDER_WIDTH + GROUP_SPREAD_GAP, y: cursorY };
+      cursorY += item.size.height + GROUP_SPREAD_ITEM_GAP;
+    } else if (direction === 'left') {
+      position = { x: groupPosition.x - GROUP_SPREAD_GAP - item.size.width, y: cursorY };
+      cursorY += item.size.height + GROUP_SPREAD_ITEM_GAP;
+    } else if (direction === 'below') {
+      position = { x: cursorX, y: groupPosition.y + GROUP_FOLDER_HEIGHT + GROUP_SPREAD_GAP };
+      cursorX += item.size.width + GROUP_SPREAD_ITEM_GAP;
+    } else {
+      position = { x: cursorX, y: groupPosition.y - GROUP_SPREAD_GAP - item.size.height };
+      cursorX += item.size.width + GROUP_SPREAD_ITEM_GAP;
+    }
+
+    if (item.type === 'task') {
+      taskPositions[item.id] = position;
+      return;
+    }
+    positions[item.id] = position;
+    if (item.type === 'note') {
+      const deltaX = position.x - previousPosition.x;
+      const deltaY = position.y - previousPosition.y;
+      (wall.webClips || [])
+        .filter((clip) => String(clip.attachedTo) === String(item.id)
+          && !groupedItems.has(getWallItemKey('webclip', clip.id)))
+        .forEach((clip) => {
+          const clipPosition = positions[clip.id] || previousPosition;
+          positions[clip.id] = { x: clipPosition.x + deltaX, y: clipPosition.y + deltaY };
+        });
+    }
+  });
+
+  return { groupPosition, positions, taskPositions };
+}
+
+function getGroupThreadPath(groupPosition, geometry, direction) {
+  const { position, size } = geometry;
+  const endCenterX = position.x + size.width / 2;
+  const endCenterY = position.y + size.height / 2;
+  if (direction === 'right') {
+    const start = { x: groupPosition.x + GROUP_FOLDER_WIDTH, y: groupPosition.y + GROUP_FOLDER_HEIGHT / 2 };
+    const end = { x: position.x, y: endCenterY };
+    const bend = Math.max(24, (end.x - start.x) * 0.35);
+    return `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`;
+  }
+  if (direction === 'left') {
+    const start = { x: groupPosition.x, y: groupPosition.y + GROUP_FOLDER_HEIGHT / 2 };
+    const end = { x: position.x + size.width, y: endCenterY };
+    const bend = Math.max(24, (start.x - end.x) * 0.35);
+    return `M ${start.x} ${start.y} C ${start.x - bend} ${start.y}, ${end.x + bend} ${end.y}, ${end.x} ${end.y}`;
+  }
+  if (direction === 'above') {
+    const start = { x: groupPosition.x + GROUP_FOLDER_WIDTH / 2, y: groupPosition.y };
+    const end = { x: endCenterX, y: position.y + size.height };
+    const bend = Math.max(24, (start.y - end.y) * 0.35);
+    return `M ${start.x} ${start.y} C ${start.x} ${start.y - bend}, ${end.x} ${end.y + bend}, ${end.x} ${end.y}`;
+  }
+  const start = { x: groupPosition.x + GROUP_FOLDER_WIDTH / 2, y: groupPosition.y + GROUP_FOLDER_HEIGHT };
+  const end = { x: endCenterX, y: position.y };
+  const bend = Math.max(24, (end.y - start.y) * 0.35);
+  return `M ${start.x} ${start.y} C ${start.x} ${start.y + bend}, ${end.x} ${end.y - bend}, ${end.x} ${end.y}`;
+}
+
+function getWallItemKey(type, id) {
+  return `${type}:${String(id)}`;
 }
 
 function getAnchorPoint(position, dimensions, anchor = 'auto') {
@@ -589,8 +708,16 @@ function formatTaskReminder(value) {
 }
 
 export default function NoteWall({ boardId = null }) {
+  const navigate = useNavigate();
   const initialBoard = useMemo(() => boardId ? storageManager.getNoteWallBoard(boardId) : null, [boardId]);
   const [boardName, setBoardName] = useState(() => initialBoard?.name || 'Sticky note wall');
+  const recentBoards = useMemo(
+    () => storageManager.getRecentNoteWallBoards(4, boardId).slice(0, 3),
+    [boardId],
+  );
+  const [boardSwitcherOpen, setBoardSwitcherOpen] = useState(false);
+  const [boardSwitcherPosition, setBoardSwitcherPosition] = useState({ top: 0, left: 12 });
+  const [pendingBoardNavigation, setPendingBoardNavigation] = useState(null);
   const [notes, setNotes] = useState(() => {
     const storedNotes = initialBoard?.notes || storageManager.getStickyNotes();
     if (!boardId) return storedNotes;
@@ -607,6 +734,14 @@ export default function NoteWall({ boardId = null }) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [groupFilter, setGroupFilter] = useState('all');
+  const [itemSidebarOpen, setItemSidebarOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedBoardItems, setSelectedBoardItems] = useState([]);
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [expandedGroupIds, setExpandedGroupIds] = useState(() => new Set());
+  const [groupContextMenu, setGroupContextMenu] = useState(null);
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [groupNameDraft, setGroupNameDraft] = useState('');
   const [connectionFrom, setConnectionFrom] = useState('');
   const [connectionTo, setConnectionTo] = useState('');
   const [connectionColor, setConnectionColor] = useState('#a5b4fc');
@@ -667,6 +802,9 @@ export default function NoteWall({ boardId = null }) {
   const [hideOrphanTasks, setHideOrphanTasks] = useState(false);
   const [connectionPreview, setConnectionPreview] = useState(null);
   const boardRef = useRef(null);
+  const boardSwitcherTriggerRef = useRef(null);
+  const boardSwitcherMenuRef = useRef(null);
+  const boardSwitcherCloseTimerRef = useRef(null);
   const attachmentInputRef = useRef(null);
   const backupImportInputRef = useRef(null);
   const voiceRecorderRef = useRef(null);
@@ -770,6 +908,10 @@ export default function NoteWall({ boardId = null }) {
     localStorage.setItem('kazedesk_note_wall_visited', 'true');
     window.dispatchEvent(new Event('kazedesk-note-wall-visited'));
   }, []);
+
+  useEffect(() => {
+    if (boardId) storageManager.recordNoteWallBoardVisit(boardId);
+  }, [boardId]);
 
   useEffect(() => {
     if (boardId) return undefined;
@@ -933,32 +1075,158 @@ export default function NoteWall({ boardId = null }) {
   }, [notes, tasks, theme, wall]);
 
   const tags = useMemo(() => [...new Set(notes.flatMap((note) => note.tags || []))].sort((a, b) => a.localeCompare(b)), [notes]);
+  const groupByItem = useMemo(() => {
+    const groupsByItem = new Map();
+    (wall.groups || []).forEach((group) => {
+      group.items.forEach((item) => {
+        const key = getWallItemKey(item.type, item.id);
+        if (!groupsByItem.has(key)) groupsByItem.set(key, group.id);
+      });
+    });
+    return groupsByItem;
+  }, [wall.groups]);
+  const isVisibleGroupMember = useCallback((type, id) => {
+    const groupId = groupByItem.get(getWallItemKey(type, id));
+    return !groupId || expandedGroupIds.has(groupId);
+  }, [expandedGroupIds, groupByItem]);
   const visibleNotes = useMemo(
     () => notes.filter((note) => {
-      if (groupFilter === 'all') return true;
-      if (groupFilter.startsWith('tag:')) return note.tags?.includes(groupFilter.slice(4));
-      return (note.category || 'Inbox') === groupFilter.slice(7);
+      const matchesFilter = groupFilter === 'all'
+        || (groupFilter.startsWith('tag:') && note.tags?.includes(groupFilter.slice(4)))
+        || (groupFilter.startsWith('folder:') && (note.category || 'Inbox') === groupFilter.slice(7));
+      return matchesFilter && isVisibleGroupMember('note', note.id);
     }),
-    [groupFilter, notes],
+    [groupFilter, isVisibleGroupMember, notes],
   );
   const visibleTasks = useMemo(() => {
     const eligibleTasks = hideOrphanTasks
       ? tasks.filter((task) => (task.category || 'Inbox') !== 'Inbox')
       : tasks;
-    if (groupFilter.startsWith('folder:')) return eligibleTasks.filter((task) => (task.category || 'Inbox') === groupFilter.slice(7));
-    return groupFilter.startsWith('tag:') ? [] : eligibleTasks;
-  }, [groupFilter, hideOrphanTasks, tasks]);
+    return eligibleTasks.filter((task) => {
+      const matchesFilter = groupFilter === 'all'
+        || (groupFilter.startsWith('folder:') && (task.category || 'Inbox') === groupFilter.slice(7));
+      return matchesFilter && isVisibleGroupMember('task', task.id);
+    });
+  }, [groupFilter, hideOrphanTasks, isVisibleGroupMember, tasks]);
   const visibleAttachments = useMemo(
-    () => (wall.attachments || []).filter(() => groupFilter === 'all' || groupFilter === 'folder:Inbox'),
-    [groupFilter, wall.attachments],
+    () => (wall.attachments || []).filter((attachment) =>
+      (groupFilter === 'all' || groupFilter === 'folder:Inbox')
+      && isVisibleGroupMember('attachment', attachment.id)),
+    [groupFilter, isVisibleGroupMember, wall.attachments],
   );
   const visibleWebClips = useMemo(
     () => (wall.webClips || []).filter((clip) =>
-      groupFilter === 'all'
-      || groupFilter === 'folder:Inbox'
-      || (clip.attachedTo && visibleNotes.some((note) => String(note.id) === String(clip.attachedTo)))),
-    [groupFilter, visibleNotes, wall.webClips],
+      (groupFilter === 'all'
+        || groupFilter === 'folder:Inbox'
+        || (clip.attachedTo && visibleNotes.some((note) => String(note.id) === String(clip.attachedTo))))
+      && isVisibleGroupMember('webclip', clip.id)),
+    [groupFilter, isVisibleGroupMember, visibleNotes, wall.webClips],
   );
+  const visibleGroups = useMemo(() => (wall.groups || []).filter((group) => group.items.some(({ type, id }) => {
+    if (groupFilter === 'all') return true;
+    if (type === 'note') {
+      const note = notes.find((item) => String(item.id) === String(id));
+      return Boolean(note && (
+        (groupFilter.startsWith('tag:') && note.tags?.includes(groupFilter.slice(4)))
+        || (groupFilter.startsWith('folder:') && (note.category || 'Inbox') === groupFilter.slice(7))
+      ));
+    }
+    if (type === 'task') {
+      const task = tasks.find((item) => String(item.id) === String(id));
+      return Boolean(task && (!hideOrphanTasks || (task.category || 'Inbox') !== 'Inbox')
+        && groupFilter.startsWith('folder:')
+        && (task.category || 'Inbox') === groupFilter.slice(7));
+    }
+    if (type === 'attachment') return groupFilter === 'folder:Inbox';
+    const clip = (wall.webClips || []).find((item) => String(item.id) === String(id));
+    if (!clip) return false;
+    const attachedNote = notes.find((item) => String(item.id) === String(clip.attachedTo));
+    return groupFilter === 'folder:Inbox'
+      || Boolean(attachedNote && (
+        (groupFilter.startsWith('tag:') && attachedNote.tags?.includes(groupFilter.slice(4)))
+        || (groupFilter.startsWith('folder:') && (attachedNote.category || 'Inbox') === groupFilter.slice(7))
+      ));
+  })), [groupFilter, hideOrphanTasks, notes, tasks, wall.groups, wall.webClips]);
+  const sidebarItems = useMemo(() => {
+    const nodes = [
+      ...notes.map((note) => ({
+        type: 'note',
+        id: String(note.id),
+        label: getWallNoteTitle(note),
+        category: note.category || 'Inbox',
+        icon: StickyNote,
+      })),
+      ...tasks.map((task) => ({
+        type: 'task',
+        id: String(task.id),
+        label: task.title || 'Untitled task',
+        category: task.category || 'Inbox',
+        icon: CheckCircle2,
+      })),
+      ...(wall.attachments || []).map((attachment) => ({
+        type: 'attachment',
+        id: String(attachment.id),
+        label: attachment.name || 'Untitled attachment',
+        category: attachment.category || 'Inbox',
+        icon: FilePlus2,
+      })),
+      ...(wall.webClips || []).map((clip) => ({
+        type: 'webclip',
+        id: String(clip.id),
+        label: clip.title || clip.url || 'Untitled link',
+        category: clip.category || 'Inbox',
+        icon: Globe2,
+      })),
+    ];
+    const nodesByKey = new Map(nodes.map((item) => [getWallItemKey(item.type, item.id), item]));
+    const folderNames = [...new Set([
+      'Inbox',
+      ...categories,
+      ...taskCategories,
+      ...nodes.map((item) => item.category),
+    ])].sort((a, b) => (a === 'Inbox' ? -1 : b === 'Inbox' ? 1 : a.localeCompare(b)));
+    const categorySections = folderNames.map((category) => {
+      const children = nodes
+        .filter((item) => item.category === category)
+        .map((item) => ({
+          value: `item:${item.type}:${item.id}`,
+          label: `${item.type === 'note' ? 'Note' : item.type === 'task' ? 'Task' : item.type === 'attachment' ? 'File' : 'Link'} · ${item.label}`,
+          ariaLabel: `${item.type === 'webclip' ? 'link' : item.type}: ${item.label}`,
+          icon: item.icon,
+          nodeType: item.type,
+          nodeId: item.id,
+        }));
+      return children.length
+        ? { label: `${category} · ${children.length}`, icon: Folder, children }
+        : { value: `category:${category}`, label: category, icon: Folder, nodeType: 'category', category };
+    });
+    const customGroupSections = (wall.groups || []).map((group) => ({
+      label: `Group · ${group.name}`,
+      icon: FolderOpen,
+      children: [
+        {
+          value: `group:${group.id}`,
+          label: `${group.name} folder`,
+          ariaLabel: `Folder: ${group.name}`,
+          icon: Folder,
+          nodeType: 'group',
+          nodeId: String(group.id),
+        },
+        ...group.items
+          .map((item) => nodesByKey.get(getWallItemKey(item.type, item.id)))
+          .filter(Boolean)
+          .map((item) => ({
+            value: `item:${item.type}:${item.id}`,
+            label: `${item.type === 'note' ? 'Note' : item.type === 'task' ? 'Task' : item.type === 'attachment' ? 'File' : 'Link'} · ${item.label}`,
+            ariaLabel: `${item.type === 'webclip' ? 'link' : item.type}: ${item.label}`,
+            icon: item.icon,
+            nodeType: item.type,
+            nodeId: item.id,
+          })),
+      ],
+    }));
+    return [...categorySections, ...customGroupSections];
+  }, [categories, notes, taskCategories, tasks, wall.attachments, wall.groups, wall.webClips]);
   const visibleEndpoint = (connection, side) => {
     const type = connection[`${side}Type`] || 'note';
     const id = String(connection[side]);
@@ -970,9 +1238,17 @@ export default function NoteWall({ boardId = null }) {
           ? visibleWebClips.some((clip) => String(clip.id) === id)
           : visibleNotes.some((note) => String(note.id) === id);
   };
+  const isVisibleGroupItem = ({ type, id }) => type === 'task'
+    ? visibleTasks.some((task) => String(task.id) === String(id))
+    : type === 'attachment'
+      ? visibleAttachments.some((attachment) => String(attachment.id) === String(id))
+      : type === 'webclip'
+          ? visibleWebClips.some((clip) => String(clip.id) === String(id))
+          : visibleNotes.some((note) => String(note.id) === String(id));
   const visibleConnections = wall.connections.filter((connection) => visibleEndpoint(connection, 'from') && visibleEndpoint(connection, 'to'));
   const selectedConnection = wall.connections.find((connection) => connection.id === selectedConnectionId);
   const selectedCard = notes.find((note) => String(note.id) === String(selectedCardId));
+  const getGroupDisplayPosition = (group) => group.position || { x: 30, y: 30 };
   const boardSize = [...visibleNotes, ...visibleAttachments, ...visibleWebClips].reduce((size, note) => {
     const position = wall.positions[note.id] || { x: 30, y: 30 };
     const dimensions = wall.sizes?.[note.id]
@@ -982,10 +1258,17 @@ export default function NoteWall({ boardId = null }) {
       height: Math.max(size.height, position.y + dimensions.height + 100),
     };
   }, { width: 1800, height: 1200 });
+  const boardWithGroups = visibleGroups.reduce((size, group) => {
+    const position = getGroupDisplayPosition(group);
+    return {
+      width: Math.max(size.width, position.x + GROUP_FOLDER_WIDTH + 100),
+      height: Math.max(size.height, position.y + (expandedGroupIds.has(group.id) ? 70 : 140)),
+    };
+  }, boardSize);
   const boardWithTasks = visibleTasks.reduce((size, task) => {
     const position = wall.taskPositions?.[task.id] || { x: 900, y: 42 };
     return { width: Math.max(size.width, position.x + 190), height: Math.max(size.height, position.y + 90) };
-  }, boardSize);
+  }, boardWithGroups);
 
   const addAttachmentFile = async (file, metadata = {}) => {
     setIsAddingAttachment(true);
@@ -1661,10 +1944,11 @@ export default function NoteWall({ boardId = null }) {
     return (
       <article
         key={`webclip:${clip.id}`}
-        className={`note-wall-webclip is-compact${attached ? ' is-attached' : ''}`}
+        className={`note-wall-webclip is-compact${attached ? ' is-attached' : ''}${isBoardItemSelected('webclip', clip.id) ? ' is-multi-selected' : ''}`}
         data-node-id={String(clip.id)}
         data-node-type="webclip"
         aria-label={`Web clip: ${clip.title}`}
+        tabIndex={selectionMode && !attached ? 0 : undefined}
         style={style}
       >
         <div className="note-wall-webclip-toolbar">
@@ -1801,6 +2085,24 @@ export default function NoteWall({ boardId = null }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!groupContextMenu) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.note-wall-group-context-menu')) {
+        setGroupContextMenu(null);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setGroupContextMenu(null);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [groupContextMenu]);
+
   const getBoardPoint = useCallback((event) => {
     const bounds = boardRef.current.getBoundingClientRect();
     return {
@@ -1808,6 +2110,212 @@ export default function NoteWall({ boardId = null }) {
       y: (event.clientY - bounds.top + boardRef.current.scrollTop) / zoom,
     };
   }, [zoom]);
+
+  const isGroupableBoardItem = (type, id) => {
+    if (type === 'note') return notes.some((item) => String(item.id) === String(id));
+    if (type === 'task') return tasks.some((item) => String(item.id) === String(id));
+    if (type === 'attachment') return (wall.attachments || []).some((item) => String(item.id) === String(id));
+    if (type === 'webclip') {
+      const clip = (wall.webClips || []).find((item) => String(item.id) === String(id));
+      return Boolean(clip && !clip.attachedTo);
+    }
+    return false;
+  };
+
+  const isBoardItemSelected = (type, id) => selectedBoardItems.some((item) => (
+    item.type === type && String(item.id) === String(id)
+  ));
+
+  const getGroupableNodeFromEvent = (event) => {
+    let node = event.target instanceof Element
+      ? event.target.closest('.note-wall-board [data-node-id][data-node-type]')
+      : null;
+    if (node?.dataset.nodeType === 'webclip' && !isGroupableBoardItem('webclip', node.dataset.nodeId)) {
+      node = node.parentElement?.closest('.note-wall-board [data-node-type="note"]') || node;
+    }
+    return node;
+  };
+
+  const toggleBoardItemSelection = (event) => {
+    if (!selectionMode) return;
+    const node = getGroupableNodeFromEvent(event);
+    if (!node) return;
+    const { nodeId: id, nodeType: type } = node.dataset;
+    if (!isGroupableBoardItem(type, id)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const key = getWallItemKey(type, id);
+    if (groupByItem.has(key)) return;
+    setSelectedBoardItems((current) => current.some((item) => getWallItemKey(item.type, item.id) === key)
+      ? current.filter((item) => getWallItemKey(item.type, item.id) !== key)
+      : [...current, { type, id }]);
+  };
+
+  const handleSelectionPointerDown = (event) => {
+    if (!selectionMode) return;
+    if (event.target instanceof Element && event.target.closest('.note-wall-group-context-menu')) return;
+    const node = getGroupableNodeFromEvent(event);
+    if (node) {
+      if (isGroupableBoardItem(node.dataset.nodeType, node.dataset.nodeId)) event.stopPropagation();
+      return;
+    }
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = getBoardPoint(event);
+    gestureRef.current = {
+      type: 'marquee',
+      startX: point.x,
+      startY: point.y,
+      shiftKey: event.shiftKey,
+    };
+    setSelectionBox({ x: point.x, y: point.y, width: 0, height: 0, crossing: false });
+  };
+
+  const groupSelectedItems = () => {
+    const items = selectedBoardItems.filter((item) => (
+      isGroupableBoardItem(item.type, item.id)
+      && !groupByItem.has(getWallItemKey(item.type, item.id))
+    ));
+    if (items.length < 2) return;
+    const positions = items.map((item) => getWallItemPosition(wall, item.type, item.id));
+    const group = {
+      id: crypto.randomUUID(),
+      name: `Group ${(wall.groups || []).length + 1}`,
+      color: '#a78bfa',
+      position: {
+        x: Math.min(...positions.map((position) => position.x)),
+        y: Math.min(...positions.map((position) => position.y)),
+      },
+      spreadDirection: 'right',
+      spreadApplied: false,
+      items: items.map((item) => ({ type: item.type, id: String(item.id) })),
+    };
+    setWall((current) => ({ ...current, groups: [...(current.groups || []), group] }));
+    setSelectedBoardItems([]);
+    setSelectionMode(false);
+    setGroupContextMenu(null);
+    setSelectionBox(null);
+  };
+
+  const applyGroupSpread = (group, direction) => {
+    const layout = getGroupSpreadLayout(group, wall, direction);
+    setWall((current) => ({
+      ...current,
+      positions: layout.positions,
+      taskPositions: layout.taskPositions,
+      groups: current.groups.map((item) => item.id === group.id
+        ? {
+            ...item,
+            position: layout.groupPosition,
+            spreadDirection: direction,
+            spreadApplied: true,
+          }
+        : item),
+    }));
+  };
+
+  const toggleGroupExpansion = (groupId) => {
+    const group = (wall.groups || []).find((item) => item.id === groupId);
+    if (!expandedGroupIds.has(groupId) && group && !group.spreadApplied) {
+      applyGroupSpread(group, GROUP_SPREAD_DIRECTIONS.includes(group.spreadDirection) ? group.spreadDirection : 'right');
+    }
+    setExpandedGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
+  const navigateToSidebarItem = (_value, item) => {
+    if (item.nodeType === 'category') {
+      setGroupFilter(`folder:${item.category}`);
+      return;
+    }
+
+    setGroupFilter('all');
+    setHideOrphanTasks(false);
+    if (item.nodeType !== 'group') {
+      const containingGroupId = groupByItem.get(getWallItemKey(item.nodeType, item.nodeId));
+      if (containingGroupId && !expandedGroupIds.has(containingGroupId)) {
+        toggleGroupExpansion(containingGroupId);
+      }
+    }
+
+    const centerItem = () => {
+      const viewport = boardRef.current;
+      if (!viewport) return;
+      const target = [...viewport.querySelectorAll('.note-wall-board [data-node-id][data-node-type]')]
+        .find((node) => node.dataset.nodeType === item.nodeType && node.dataset.nodeId === String(item.nodeId));
+      if (!target) return;
+      const viewportBounds = viewport.getBoundingClientRect();
+      const targetBounds = target.getBoundingClientRect();
+      const left = Math.max(0, viewport.scrollLeft + targetBounds.left - viewportBounds.left + targetBounds.width / 2 - viewport.clientWidth / 2);
+      const top = Math.max(0, viewport.scrollTop + targetBounds.top - viewportBounds.top + targetBounds.height / 2 - viewport.clientHeight / 2);
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth';
+      if (typeof viewport.scrollTo === 'function') viewport.scrollTo({ left, top, behavior });
+      else {
+        viewport.scrollLeft = left;
+        viewport.scrollTop = top;
+      }
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(centerItem));
+  };
+
+  const openGroupContextMenu = (event, group) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setGroupContextMenu({ kind: 'group', id: group.id, ...getBoardPoint(event) });
+  };
+
+  const openSelectionContextMenu = (event) => {
+    if (!selectionMode || selectedBoardItems.length < 2) return;
+    const node = getGroupableNodeFromEvent(event);
+    if (node?.dataset.nodeType === 'group') return;
+    const clickedItemIsSelected = node && selectedBoardItems.some((item) => (
+      getWallItemKey(item.type, item.id) === getWallItemKey(node.dataset.nodeType, node.dataset.nodeId)
+    ));
+    if (node && !clickedItemIsSelected) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setGroupContextMenu({ kind: 'selection', ...getBoardPoint(event) });
+  };
+
+  const changeGroup = (groupId, updates) => {
+    setWall((current) => ({
+      ...current,
+      groups: current.groups.map((group) => group.id === groupId ? { ...group, ...updates } : group),
+    }));
+  };
+
+  const changeGroupSpreadDirection = (groupId, direction) => {
+    const group = (wall.groups || []).find((item) => item.id === groupId);
+    if (!group || !GROUP_SPREAD_DIRECTIONS.includes(direction)) return;
+    if (expandedGroupIds.has(groupId)) applyGroupSpread(group, direction);
+    else changeGroup(groupId, { spreadDirection: direction, spreadApplied: false });
+    setGroupContextMenu(null);
+  };
+
+  const saveGroupName = (event) => {
+    event.preventDefault();
+    const name = groupNameDraft.trim();
+    if (!name || editingGroupId === null) return;
+    changeGroup(editingGroupId, { name: name.slice(0, 80) });
+    setEditingGroupId(null);
+    setGroupNameDraft('');
+  };
+
+  const ungroupItems = (groupId) => {
+    setWall((current) => ({ ...current, groups: current.groups.filter((group) => group.id !== groupId) }));
+    setExpandedGroupIds((current) => {
+      const next = new Set(current);
+      next.delete(groupId);
+      return next;
+    });
+    setGroupContextMenu(null);
+  };
 
   useEffect(() => {
     const moveGesture = (event) => {
@@ -1819,7 +2327,59 @@ export default function NoteWall({ boardId = null }) {
         return;
       }
       const point = getBoardPoint(event);
-      if (gesture.type === 'move-node') {
+      if (gesture.type === 'marquee') {
+        setSelectionBox({
+          x: Math.min(gesture.startX, point.x),
+          y: Math.min(gesture.startY, point.y),
+          width: Math.abs(point.x - gesture.startX),
+          height: Math.abs(point.y - gesture.startY),
+          crossing: point.x < gesture.startX,
+        });
+        return;
+      }
+      if (gesture.type === 'move-group') {
+        const displayPosition = { x: point.x - gesture.offsetX, y: point.y - gesture.offsetY };
+        const nextPosition = {
+          x: Math.max(0, gesture.groupPosition.x + displayPosition.x - gesture.displayPosition.x),
+          y: Math.max(0, gesture.groupPosition.y + displayPosition.y - gesture.displayPosition.y),
+        };
+        setWall((current) => {
+          const group = current.groups.find((item) => item.id === gesture.id);
+          if (!group) return current;
+          const previousPosition = group.position || { x: 30, y: 30 };
+          const deltaX = nextPosition.x - previousPosition.x;
+          const deltaY = nextPosition.y - previousPosition.y;
+          const positions = { ...current.positions };
+          const taskPositions = { ...current.taskPositions };
+          const groupItemKeys = new Set(group.items.map((item) => getWallItemKey(item.type, item.id)));
+          group.items.forEach((item) => {
+            if (item.type === 'task') {
+              const position = taskPositions[item.id] || { x: 30, y: 30 };
+              taskPositions[item.id] = { x: position.x + deltaX, y: position.y + deltaY };
+              return;
+            }
+            const position = positions[item.id] || { x: 30, y: 30 };
+            positions[item.id] = { x: position.x + deltaX, y: position.y + deltaY };
+            if (item.type === 'note') {
+              current.webClips
+                .filter((clip) => String(clip.attachedTo) === String(item.id)
+                  && !groupItemKeys.has(getWallItemKey('webclip', clip.id)))
+                .forEach((clip) => {
+                  const clipPosition = positions[clip.id] || { x: position.x, y: position.y };
+                  positions[clip.id] = { x: clipPosition.x + deltaX, y: clipPosition.y + deltaY };
+                });
+            }
+          });
+          return {
+            ...current,
+            positions,
+            taskPositions,
+            groups: current.groups.map((item) => item.id === group.id
+              ? { ...item, position: nextPosition }
+              : item),
+          };
+        });
+      } else if (gesture.type === 'move-node') {
         const nextPosition = { x: Math.max(0, point.x - gesture.offsetX), y: Math.max(0, point.y - gesture.offsetY) };
         if (gesture.nodeType === 'task') {
           setWall((current) => ({ ...current, taskPositions: { ...current.taskPositions, [gesture.id]: nextPosition } }));
@@ -1884,6 +2444,55 @@ export default function NoteWall({ boardId = null }) {
 
     const endGesture = (event) => {
       const gesture = gestureRef.current;
+      if (gesture?.type === 'marquee') {
+        if (event.type !== 'pointercancel') {
+          const point = getBoardPoint(event);
+          const selection = {
+            left: Math.min(gesture.startX, point.x),
+            top: Math.min(gesture.startY, point.y),
+            right: Math.max(gesture.startX, point.x),
+            bottom: Math.max(gesture.startY, point.y),
+          };
+          if (selection.right - selection.left >= 4 && selection.bottom - selection.top >= 4) {
+            const boardBounds = boardRef.current.getBoundingClientRect();
+            const matches = [...boardRef.current.querySelectorAll('.note-wall-board [data-node-id][data-node-type]')]
+              .filter((node) => {
+                const { nodeId: id, nodeType: type } = node.dataset;
+                const key = getWallItemKey(type, id);
+                if (groupByItem.has(key) || type === 'group') return false;
+                const exists = type === 'note'
+                  ? notes.some((item) => String(item.id) === String(id))
+                  : type === 'task'
+                    ? tasks.some((item) => String(item.id) === String(id))
+                    : type === 'attachment'
+                      ? (wall.attachments || []).some((item) => String(item.id) === String(id))
+                      : type === 'webclip'
+                        ? (wall.webClips || []).some((item) => String(item.id) === String(id) && !item.attachedTo)
+                        : false;
+                if (!exists) return false;
+                const bounds = node.getBoundingClientRect();
+                const nodeRect = {
+                  left: (bounds.left - boardBounds.left + boardRef.current.scrollLeft) / zoom,
+                  right: (bounds.right - boardBounds.left + boardRef.current.scrollLeft) / zoom,
+                  top: (bounds.top - boardBounds.top + boardRef.current.scrollTop) / zoom,
+                  bottom: (bounds.bottom - boardBounds.top + boardRef.current.scrollTop) / zoom,
+                };
+                const intersects = nodeRect.left <= selection.right && nodeRect.right >= selection.left
+                  && nodeRect.top <= selection.bottom && nodeRect.bottom >= selection.top;
+                const contained = nodeRect.left >= selection.left && nodeRect.right <= selection.right
+                  && nodeRect.top >= selection.top && nodeRect.bottom <= selection.bottom;
+                return gesture.startX <= point.x ? contained : intersects;
+              })
+              .map((node) => ({ type: node.dataset.nodeType, id: node.dataset.nodeId }));
+            setSelectedBoardItems((current) => gesture.shiftKey
+              ? [...current, ...matches.filter((item) => !current.some((existing) => getWallItemKey(existing.type, existing.id) === getWallItemKey(item.type, item.id)))]
+              : matches);
+          } else if (!gesture.shiftKey) {
+            setSelectedBoardItems([]);
+          }
+        }
+        setSelectionBox(null);
+      }
       if (gesture?.type === 'connect') {
         const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-node-id]');
         const to = target?.getAttribute('data-node-id');
@@ -1927,7 +2536,7 @@ export default function NoteWall({ boardId = null }) {
       window.removeEventListener('pointerup', endGesture);
       window.removeEventListener('pointercancel', endGesture);
     };
-  }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, notes, tasks, wall.attachments, wall.positions, wall.sizes, wall.taskPositions, wall.webClips]);
+  }, [connectionColor, connectionCurved, connectionStyle, getBoardPoint, groupByItem, notes, tasks, wall.attachments, wall.groups, wall.positions, wall.sizes, wall.taskPositions, wall.webClips, zoom]);
 
   const startPan = (event) => {
     if (!panMode || event.target.closest('.note-wall-card, .note-wall-attachment, .note-wall-webclip, .note-wall-task') || event.target.closest('button')) return;
@@ -2263,6 +2872,57 @@ export default function NoteWall({ boardId = null }) {
     ? 'Changes saved locally'
     : wallSaveStatus;
 
+  const updateBoardSwitcherPosition = () => {
+    const trigger = boardSwitcherTriggerRef.current;
+    if (!trigger) return;
+    const bounds = trigger.getBoundingClientRect();
+    const menuWidth = Math.min(290, window.innerWidth - 24);
+    const left = Math.max(12, Math.min(bounds.left, window.innerWidth - menuWidth - 12));
+    const top = Math.max(12, Math.min(bounds.bottom + 8, window.innerHeight - 360));
+    setBoardSwitcherPosition({ top, left });
+  };
+  const openBoardSwitcher = () => {
+    window.clearTimeout(boardSwitcherCloseTimerRef.current);
+    updateBoardSwitcherPosition();
+    setBoardSwitcherOpen(true);
+  };
+  const closeBoardSwitcher = () => {
+    window.clearTimeout(boardSwitcherCloseTimerRef.current);
+    setBoardSwitcherOpen(false);
+  };
+  const scheduleBoardSwitcherClose = () => {
+    window.clearTimeout(boardSwitcherCloseTimerRef.current);
+    boardSwitcherCloseTimerRef.current = window.setTimeout(() => setBoardSwitcherOpen(false), 140);
+  };
+  const requestBoardNavigation = (destination) => {
+    closeBoardSwitcher();
+    setPendingBoardNavigation(destination);
+  };
+  const handleBoardSwitcherBlur = (event) => {
+    const nextTarget = event.relatedTarget;
+    if (boardSwitcherTriggerRef.current?.contains(nextTarget) || boardSwitcherMenuRef.current?.contains(nextTarget)) return;
+    closeBoardSwitcher();
+  };
+
+  useEffect(() => () => window.clearTimeout(boardSwitcherCloseTimerRef.current), []);
+
+  useEffect(() => {
+    if (!boardSwitcherOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (boardSwitcherTriggerRef.current?.contains(event.target) || boardSwitcherMenuRef.current?.contains(event.target)) return;
+      closeBoardSwitcher();
+    };
+    const reposition = () => updateBoardSwitcherPosition();
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [boardSwitcherOpen]);
+
   useEffect(() => {
     window.addEventListener('resize', positionConnectionPanel);
     return () => window.removeEventListener('resize', positionConnectionPanel);
@@ -2272,9 +2932,35 @@ export default function NoteWall({ boardId = null }) {
     <main className={`note-wall-page landing-theme-${theme}${isPrinting ? ' is-printing' : ''}`}>
       <header className="note-wall-toolbar">
         <div className="note-wall-heading">
-          <Link to={boardId ? '/wall/boards' : '/dashboard'} aria-label={boardId ? 'Back to boards' : 'Back to dashboard'} title={boardId ? 'Back to boards' : 'Back to dashboard'}><ArrowLeft size={17} /></Link>
+          <button
+            type="button"
+            className={`note-wall-sidebar-toggle${itemSidebarOpen ? ' is-active' : ''}`}
+            aria-label={itemSidebarOpen ? 'Close board item sidebar' : 'Open board item sidebar'}
+            aria-expanded={itemSidebarOpen}
+            aria-controls="note-wall-item-sidebar"
+            title={itemSidebarOpen ? 'Close items' : 'Browse items'}
+            onClick={() => setItemSidebarOpen((open) => !open)}
+          ><Menu size={17} /></button>
           <div className="note-wall-heading-copy">
-            <h1>{boardId ? boardName : 'Sticky note wall'}</h1>
+            <h1 className="note-wall-board-switcher">
+              <button
+                ref={boardSwitcherTriggerRef}
+                type="button"
+                className="note-wall-board-switcher-trigger"
+                aria-haspopup="menu"
+                aria-expanded={boardSwitcherOpen}
+                aria-label={`Choose a board or workspace. Current: ${boardId ? boardName : 'Sticky note wall'}`}
+                title="Switch board or workspace"
+                onMouseEnter={openBoardSwitcher}
+                onMouseLeave={scheduleBoardSwitcherClose}
+                onFocus={openBoardSwitcher}
+                onBlur={handleBoardSwitcherBlur}
+                onClick={openBoardSwitcher}
+              >
+                <span>{boardId ? boardName : 'Sticky note wall'}</span>
+                <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            </h1>
             <div className="note-wall-heading-meta" aria-label="Board contents">
               <span title={`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`} aria-label={`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`}><StickyNote size={12} />{notes.length}</span>
               <span title={`${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`} aria-label={`${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`}><CheckCircle2 size={12} />{tasks.length}</span>
@@ -2314,12 +3000,11 @@ export default function NoteWall({ boardId = null }) {
               onChange={handleBackupImportSelection}
             />
             <details className="note-wall-toolbar-menu note-wall-add-menu">
-              <summary><Plus size={15} /> Add items <ChevronDown size={13} /></summary>
+              <summary aria-label="Add items" title="Add items"><Plus size={15} /><span>Add</span><ChevronDown size={13} /></summary>
               <div className="note-wall-toolbar-menu-panel">
                 {boardId && <>
                   <button type="button" onClick={(event) => { closeToolbarMenu(event); openBoardNoteEditor(); }}><StickyNote size={15} /> Add note</button>
                   <button type="button" onClick={(event) => { closeToolbarMenu(event); setShowBoardTaskDialog(true); }}><CheckCircle2 size={15} /> Add task</button>
-                  <button type="button" onClick={(event) => { closeToolbarMenu(event); setBoardFolderError(''); setShowBoardFolderDialog(true); }}><Plus size={15} /> New folder</button>
                 </>}
                 <button type="button" disabled={isAddingAttachment} title={`Add an image, PDF, or audio file (up to ${MAX_WALL_ATTACHMENT_SIZE / 1024 / 1024} MB)`} onClick={(event) => { closeToolbarMenu(event); attachmentInputRef.current?.click(); }}>
                   <FilePlus2 size={15} /> {isAddingAttachment ? 'Adding…' : 'Add attachment'}
@@ -2338,8 +3023,37 @@ export default function NoteWall({ boardId = null }) {
             <span className="note-wall-attachment-status" role="status" aria-live="polite">
               {webClipStatus || attachmentStatus}
             </span>
+            {selectionMode && selectedBoardItems.length >= 2 ? (
+              <button
+                type="button"
+                className="note-wall-primary-action"
+                aria-label={`Group ${selectedBoardItems.length} selected items`}
+                onClick={groupSelectedItems}
+              ><FolderPlus size={15} /> Group ({selectedBoardItems.length})</button>
+            ) : (
+              <button
+                type="button"
+                className={`note-wall-tool-toggle${selectionMode ? ' is-active' : ''}`}
+                aria-label={selectionMode ? `Selecting ${selectedBoardItems.length} items` : 'Select items'}
+                title="Select items"
+                aria-pressed={selectionMode}
+                disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length}
+                onClick={() => {
+                  setSelectionMode(true);
+                  setSelectedBoardItems([]);
+                }}
+              ><MousePointer2 size={15} /><span>{selectionMode ? `Selecting (${selectedBoardItems.length})` : 'Select'}</span></button>
+            )}
+            {selectionMode && (
+              <button
+                type="button"
+                className="note-wall-tool-toggle"
+                aria-label="Cancel item selection"
+                onClick={() => { setSelectionMode(false); setSelectedBoardItems([]); }}
+              >Cancel</button>
+            )}
             <label className="note-wall-group-filter">Group
-              <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
+              <select value={groupFilter} onChange={(event) => { setGroupFilter(event.target.value); setSelectedBoardItems([]); setSelectionMode(false); }}>
                 <option value="all">All items</option>
                 <optgroup label="Folders">
                   {categories.map((category) => <option key={category} value={`folder:${category}`}>{category}</option>)}
@@ -2349,29 +3063,30 @@ export default function NoteWall({ boardId = null }) {
                 </optgroup>
               </select>
             </label>
-            <button type="button" className="note-wall-primary-action" aria-label="Tidy & center" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length} title="Arrange and center notes, attachments, web clips, and tasks">
-              <AlignCenter size={16} /> Tidy
+            <button type="button" className="note-wall-primary-action" aria-label="Tidy & center" onClick={() => setShowTidyConfirmation(true)} disabled={!visibleNotes.length && !visibleTasks.length && !visibleAttachments.length && !visibleWebClips.length} title="Tidy">
+              <AlignCenter size={16} /><span>Tidy</span>
             </button>
             <button
               type="button"
               className={`note-wall-tool-toggle${hideOrphanTasks ? ' is-active' : ''}`}
+              aria-label={hideOrphanTasks ? 'Show inbox tasks' : 'Hide inbox tasks'}
               aria-pressed={hideOrphanTasks}
               onClick={() => setHideOrphanTasks((hidden) => !hidden)}
-              title="Hide tasks in Inbox or without a custom folder"
+              title={hideOrphanTasks ? 'Show inbox tasks' : 'Hide inbox tasks'}
             >
               {hideOrphanTasks ? <EyeOff size={15} /> : <Eye size={15} />}
               <span>{hideOrphanTasks ? 'Show orphan tasks' : 'Hide orphan tasks'}</span>
             </button>
             <div className="note-wall-undo-redo" role="toolbar" aria-label="Edit history">
-              <button type="button" aria-label="Undo" title="Undo wall change" disabled={!canUndo} onClick={undoWallChange}>
-                <Undo2 size={15} /> Undo
+              <button type="button" aria-label="Undo" title="Undo" disabled={!canUndo} onClick={undoWallChange}>
+                <Undo2 size={15} /><span>Undo</span>
               </button>
-              <button type="button" aria-label="Redo" title="Redo wall change" disabled={!canRedo} onClick={redoWallChange}>
-                <Redo2 size={15} /> Redo
+              <button type="button" aria-label="Redo" title="Redo" disabled={!canRedo} onClick={redoWallChange}>
+                <Redo2 size={15} /><span>Redo</span>
               </button>
             </div>
-            {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
-              <button type="button" className={panMode ? 'is-active' : ''} aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
+            {(visibleNotes.length > 0 || visibleTasks.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0 || visibleGroups.length > 0) && <div className="note-wall-board-actions" role="toolbar" aria-label="Board navigation">
+              <button type="button" className={panMode ? 'is-active' : ''} aria-label="Move board" aria-pressed={panMode} onClick={() => setPanMode((active) => !active)} title="Move board">
                 <Hand size={15} /><span>Move</span>
               </button>
               <span className="note-wall-toolbar-divider" />
@@ -2385,7 +3100,7 @@ export default function NoteWall({ boardId = null }) {
             </div>}
             {(visibleNotes.length > 0 || visibleAttachments.length > 0 || visibleWebClips.length > 0) && (
               <details className={`note-wall-connection-tools${selectedConnection ? ' has-selected-connection' : ''} is-mobile-tab-${mobileConnectionTab}`} ref={connectionPanelRef} onToggle={positionConnectionPanel}>
-                <summary aria-label="Connections"><Link2 size={15} /> Connections{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}<ChevronDown size={13} /></summary>
+                <summary aria-label="Connections" title="Connections"><Link2 size={15} /><span className="note-wall-connections-label">Connections</span>{visibleConnections.length ? <span className="note-wall-connection-count">{visibleConnections.length}</span> : null}<ChevronDown size={13} /></summary>
                 <div className="note-wall-connection-panel">
                   <div className="note-wall-connection-panel-heading">
                     <div>
@@ -2551,7 +3266,70 @@ export default function NoteWall({ boardId = null }) {
         </div>
       </header>
 
-      {backupError && <p className="note-wall-backup-error" role="alert">{backupError}</p>}
+      {boardSwitcherOpen && createPortal(
+        <div
+          ref={boardSwitcherMenuRef}
+          className={`note-wall-board-switcher-menu${theme === 'light' ? ' is-light' : ''}`}
+          role="menu"
+          aria-label="Board and workspace navigation"
+          style={{
+            top: boardSwitcherPosition.top,
+            left: boardSwitcherPosition.left,
+            maxHeight: `calc(100vh - ${boardSwitcherPosition.top + 12}px)`,
+          }}
+          onMouseEnter={() => window.clearTimeout(boardSwitcherCloseTimerRef.current)}
+          onMouseLeave={scheduleBoardSwitcherClose}
+          onBlur={handleBoardSwitcherBlur}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              closeBoardSwitcher();
+              boardSwitcherTriggerRef.current?.focus();
+            }
+          }}
+        >
+          <div className="note-wall-board-switcher-shortcuts" aria-label="Quick destinations">
+            <button type="button" role="menuitem" aria-label="Workspace" onClick={() => requestBoardNavigation({ to: '/dashboard', label: 'Workspace' })}>
+              <span>Workspace</span><span className="note-wall-board-switcher-hint">Dashboard</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!boardId}
+              aria-current={!boardId ? 'page' : undefined}
+              onClick={() => requestBoardNavigation({ to: '/wall', label: 'Dashboard note wall' })}
+            >
+              <span>Dashboard note wall</span>{!boardId && <span className="note-wall-board-switcher-hint">Current</span>}
+            </button>
+            <button type="button" role="menuitem" onClick={() => requestBoardNavigation({ to: '/wall/boards', label: 'all boards' })}>
+              <span>Back to boards</span>
+            </button>
+          </div>
+          <div className="note-wall-board-switcher-recent">
+            <h2>Recent boards</h2>
+            {recentBoards.length
+              ? recentBoards.map((board) => (
+                <button
+                  key={board.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => requestBoardNavigation({ to: `/wall/boards/${board.id}`, label: board.name })}
+                >{board.name}</button>
+              ))
+              : <p>No other boards yet.</p>}
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      <div className="note-wall-content">
+        <BoardItemSidebar
+          items={sidebarItems}
+          onSelect={navigateToSidebarItem}
+          theme={theme}
+          isOpen={itemSidebarOpen}
+        />
+        <div className="note-wall-content-main">
+          {backupError && <p className="note-wall-backup-error" role="alert">{backupError}</p>}
       {boardId && backupCard && (
         <aside className="note-wall-backup-card" role="region" aria-labelledby="note-wall-backup-title">
           <div className="note-wall-backup-card-header">
@@ -2581,7 +3359,7 @@ export default function NoteWall({ boardId = null }) {
         </aside>
       )}
 
-      {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 ? (
+      {visibleNotes.length === 0 && visibleTasks.length === 0 && visibleAttachments.length === 0 && visibleWebClips.length === 0 && visibleGroups.length === 0 ? (
         <div className="note-wall-empty">
           <StickyNote size={34} />
           <h2>{notes.length || tasks.length ? 'No items in this view' : boardId ? 'Start your new board' : 'Start with your notes'}</h2>
@@ -2605,8 +3383,14 @@ export default function NoteWall({ boardId = null }) {
         <div className={`note-wall-scroll${panMode ? ' is-pan-mode' : ''}`} ref={boardRef} onPointerDown={startPan} style={isPrinting ? { height: boardWithTasks.height * printScale } : undefined}>
           <div className="note-wall-canvas" style={{ width: boardWithTasks.width * zoom, height: boardWithTasks.height * zoom }}>
             <div
-              className="note-wall-board"
+                className={`note-wall-board${selectionMode ? ' is-selecting-items' : ''}`}
               aria-label="Draggable note and attachment board"
+                onPointerDownCapture={handleSelectionPointerDown}
+                onClickCapture={toggleBoardItemSelection}
+                onContextMenuCapture={openSelectionContextMenu}
+                onKeyDownCapture={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') toggleBoardItemSelection(event);
+                }}
               style={{ width: boardWithTasks.width, height: boardWithTasks.height, transform: `scale(${zoom})`, '--wall-print-scale': printScale }}
             >
             <svg className="note-wall-connections" role="group" aria-label="Note connections">
@@ -2642,19 +3426,49 @@ export default function NoteWall({ boardId = null }) {
                   </g>
                 );
               })}
+              {visibleGroups.flatMap((group) => (
+                expandedGroupIds.has(group.id)
+                  ? group.items.filter(isVisibleGroupItem).map((item) => {
+                    const geometry = getWallConnectionEndpoint(wall, notes, item.type, item.id);
+                    const groupPosition = getGroupDisplayPosition(group);
+                    const path = getGroupThreadPath(groupPosition, geometry, group.spreadDirection || 'right');
+                    return (
+                      <path
+                        key={`group-thread:${group.id}:${item.type}:${item.id}`}
+                        className="note-wall-group-thread"
+                        d={path}
+                        stroke={group.color}
+                        aria-hidden="true"
+                      />
+                    );
+                  })
+                  : []
+              ))}
               {connectionPreview && (() => {
                 const geometry = getWallConnectionEndpoint(wall, notes, connectionPreview.fromType || 'note', connectionPreview.from);
                 const start = getAnchorPoint(geometry.position, geometry.size, connectionPreview.anchor);
                 return <path d={`M ${start.x} ${start.y} L ${connectionPreview.x} ${connectionPreview.y}`} stroke={connectionColor} strokeWidth="3" strokeDasharray="5 6" />;
               })()}
             </svg>
+            {selectionBox && (
+              <div
+                className={`note-wall-selection-box${selectionBox.crossing ? ' is-crossing' : ''}`}
+                aria-hidden="true"
+                style={{
+                  left: selectionBox.x,
+                  top: selectionBox.y,
+                  width: selectionBox.width,
+                  height: selectionBox.height,
+                }}
+              />
+            )}
             {visibleNotes.map((note) => {
               const position = wall.positions[note.id] || { x: 30, y: 30 };
               const dimensions = wall.sizes?.[note.id] || { width: CARD_WIDTH, height: CARD_HEIGHT };
               return (
                 <article
                   key={note.id}
-                  className={`note-wall-card${boardId ? ' is-standalone' : ''}${String(selectedCardId) === String(note.id) ? ' is-selected' : ''}`}
+                  className={`note-wall-card${boardId ? ' is-standalone' : ''}${String(selectedCardId) === String(note.id) ? ' is-selected' : ''}${isBoardItemSelected('note', note.id) ? ' is-multi-selected' : ''}`}
                   data-note-id={String(note.id)}
                   data-node-id={String(note.id)}
                   data-node-type="note"
@@ -2822,10 +3636,11 @@ export default function NoteWall({ boardId = null }) {
               return (
                 <article
                   key={`attachment:${attachment.id}`}
-                  className={`note-wall-attachment${attachment.mediaType === 'audio' ? ' is-audio' : ''}`}
+                  className={`note-wall-attachment${attachment.mediaType === 'audio' ? ' is-audio' : ''}${isBoardItemSelected('attachment', attachment.id) ? ' is-multi-selected' : ''}`}
                   data-node-id={String(attachment.id)}
                   data-node-type="attachment"
                   aria-label={`${attachment.mediaType} attachment: ${attachment.name}`}
+                  tabIndex={selectionMode ? 0 : undefined}
                   style={{ left: position.x, top: position.y, width: dimensions.width, height: dimensions.height }}
                 >
                   <div className="note-wall-attachment-heading">
@@ -2920,7 +3735,7 @@ export default function NoteWall({ boardId = null }) {
               return (
                 <article
                   key={`task:${task.id}`}
-                  className={`note-wall-task${boardId ? ' is-standalone' : ''}`}
+                  className={`note-wall-task${boardId ? ' is-standalone' : ''}${isBoardItemSelected('task', task.id) ? ' is-multi-selected' : ''}`}
                   data-node-id={String(task.id)}
                   data-node-type="task"
                   style={{ left: position.x, top: position.y, '--task-folder-color': folderColor }}
@@ -2981,10 +3796,164 @@ export default function NoteWall({ boardId = null }) {
                 </article>
               );
             })}
+              {visibleGroups.map((group) => {
+                const position = getGroupDisplayPosition(group);
+                const isExpanded = expandedGroupIds.has(group.id);
+                const isEditing = editingGroupId === group.id;
+                return (
+                  <article
+                    key={`group:${group.id}`}
+                    className={`note-wall-group-folder${isExpanded ? ' is-expanded' : ''}`}
+                    data-node-id={group.id}
+                    data-node-type="group"
+                    aria-label={`${group.name} group folder`}
+                    style={{ left: position.x, top: position.y, '--group-color': group.color }}
+                    onContextMenu={(event) => openGroupContextMenu(event, group)}
+                  >
+                    <button
+                      type="button"
+                      className="note-wall-group-folder-move"
+                      aria-label={`Move group folder ${group.name}`}
+                      title="Move folder and its contents"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const point = getBoardPoint(event);
+                        gestureRef.current = {
+                          type: 'move-group',
+                          id: group.id,
+                          offsetX: point.x - position.x,
+                          offsetY: point.y - position.y,
+                          groupPosition: group.position || { x: 30, y: 30 },
+                          displayPosition: position,
+                        };
+                      }}
+                    ><GripVertical size={14} /></button>
+                    {isEditing ? (
+                      <form
+                        className="note-wall-group-rename"
+                        onSubmit={saveGroupName}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          autoFocus
+                          aria-label="Group name"
+                          maxLength={80}
+                          value={groupNameDraft}
+                          onChange={(event) => setGroupNameDraft(event.target.value)}
+                        />
+                        <button type="submit" aria-label="Save group name" disabled={!groupNameDraft.trim()}><CheckCircle2 size={14} /></button>
+                        <button type="button" aria-label="Cancel group rename" onClick={() => { setEditingGroupId(null); setGroupNameDraft(''); }}><X size={14} /></button>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="note-wall-group-folder-open"
+                        aria-label={`${isExpanded ? 'Close' : 'Open'} group ${group.name}`}
+                        aria-expanded={isExpanded}
+                        onClick={(event) => { event.stopPropagation(); toggleGroupExpansion(group.id); }}
+                      >
+                        {isExpanded ? <FolderOpen size={23} /> : <Folder size={23} />}
+                        <strong>{group.name}</strong>
+                        <span>{group.items.length} {group.items.length === 1 ? 'item' : 'items'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="note-wall-group-folder-options"
+                      aria-label={`Group options for ${group.name}`}
+                      title="Right-click for group options"
+                      onClick={(event) => openGroupContextMenu(event, group)}
+                    ><Ellipsis size={15} /></button>
+                  </article>
+                );
+              })}
+              {groupContextMenu && (() => {
+                if (groupContextMenu.kind === 'selection') {
+                  return (
+                    <div
+                      className="note-wall-group-context-menu"
+                      role="menu"
+                      aria-label="Actions for selected items"
+                      style={{ left: groupContextMenu.x, top: groupContextMenu.y }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onContextMenu={(event) => event.preventDefault()}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={groupSelectedItems}
+                      ><FolderPlus size={14} /> Group {selectedBoardItems.length} items into folder</button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setSelectedBoardItems([]); setGroupContextMenu(null); }}
+                      >Clear selection</button>
+                    </div>
+                  );
+                }
+                const group = (wall.groups || []).find((item) => item.id === groupContextMenu.id);
+                if (!group) return null;
+                return (
+                  <div
+                    className="note-wall-group-context-menu"
+                    role="menu"
+                    aria-label={`Actions for ${group.name}`}
+                    style={{ left: groupContextMenu.x, top: groupContextMenu.y }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.preventDefault()}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditingGroupId(group.id);
+                        setGroupNameDraft(group.name);
+                        setGroupContextMenu(null);
+                      }}
+                    ><Pencil size={14} /> Rename group</button>
+                    <label>
+                      Folder color
+                      <input
+                        aria-label="Folder color"
+                        type="color"
+                        value={group.color}
+                        onChange={(event) => changeGroup(group.id, { color: event.target.value })}
+                      />
+                    </label>
+                    <div className="note-wall-group-spread-options" role="group" aria-label="Spread direction">
+                      <span>Spread direction</span>
+                      <div>
+                        {GROUP_SPREAD_DIRECTIONS.map((direction) => (
+                          <button
+                            key={direction}
+                            type="button"
+                            aria-label={`Spread ${direction}`}
+                            aria-pressed={(group.spreadDirection || 'right') === direction}
+                            onClick={() => changeGroupSpreadDirection(group.id, direction)}
+                          >{direction[0].toUpperCase() + direction.slice(1)}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { toggleGroupExpansion(group.id); setGroupContextMenu(null); }}
+                    >{expandedGroupIds.has(group.id) ? 'Close folder' : 'Open folder'}</button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => ungroupItems(group.id)}
+                    >Ungroup items</button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       )}
+        </div>
+      </div>
       {threadNode && (
         <div className="note-wall-modal-backdrop" role="presentation" onClick={closeCommentThread}>
           <section className="note-wall-modal note-wall-thread-dialog" role="dialog" aria-modal="true" aria-labelledby="note-wall-thread-title" onClick={(event) => event.stopPropagation()}>
@@ -3390,6 +4359,38 @@ export default function NoteWall({ boardId = null }) {
                 <button type="button" className="note-wall-cancel-tidy" onClick={() => setShowBoardFolderDialog(false)}>Cancel</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+      {pendingBoardNavigation && (
+        <div className="note-wall-modal-backdrop" role="presentation" onClick={() => setPendingBoardNavigation(null)}>
+          <section
+            className="note-wall-modal note-wall-board-switcher-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="board-switcher-confirm-title"
+            aria-describedby="board-switcher-confirm-description"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setPendingBoardNavigation(null);
+            }}
+          >
+            <h2 id="board-switcher-confirm-title">Leave this {boardId ? 'board' : 'note wall'}?</h2>
+            <p id="board-switcher-confirm-description">
+              You’re leaving “{boardId ? boardName : 'Sticky note wall'}” and heading to {pendingBoardNavigation.label}. Your changes are saved automatically in this browser.
+            </p>
+            <div className="note-wall-tidy-actions">
+              <button
+                type="button"
+                className="note-wall-delete-confirm"
+                onClick={() => {
+                  const { to } = pendingBoardNavigation;
+                  setPendingBoardNavigation(null);
+                  navigate(to);
+                }}
+              >Leave and continue</button>
+              <button type="button" className="note-wall-cancel-tidy" autoFocus onClick={() => setPendingBoardNavigation(null)}>Stay here</button>
+            </div>
           </section>
         </div>
       )}

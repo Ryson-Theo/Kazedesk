@@ -3,10 +3,19 @@
 **Make room for deep focus.** Kazedesk is a calm, customizable productivity workspace for focus sessions, tasks, notes, and music. It runs in the browser and stores personal workspace data locally on the device.
 
 <p align="center">
-  <img src="./public/kazedesk.svg" alt="Kazedesk logo with Pip, the animated blue-crested bird" width="360" />
+  <img src="./src/assets/pipbird/Chibi%20Bird%20Sticker%20Animation%20Frames.gif" alt="Pip, Kazedesk’s animated settled bird mascot" width="72" />
+  <br />
+  <strong>Kazedesk</strong>
 </p>
 
 > **Project status:** actively evolving. Features, screenshots, and behavior may change as the project develops.
+
+## What's new in v0.2.1
+
+- Pip now follows the cursor around the landing page, settles in clear spaces, and plays a surprise animation when clicked.
+- Workspace Pip offers focused reminders for starting focus, completing tasks, stretching during breaks, and drinking water.
+- Group Note Wall items into locally saved folders, choose how folder contents spread, and navigate them from the branched sidebar.
+- Switch from a board title to the workspace, dashboard wall, or one of the three most recently opened boards, with a confirmation before leaving.
 
 ## Features
 
@@ -14,15 +23,22 @@
 
 - Arrange and resize dashboard widgets around your focus.
 - Stay on track with a configurable focus timer, tasks, reminders, and nested subtasks.
+- Get friendly Pip animations for focus starts, completed tasks, stretch breaks, and water reminders.
 - Keep quick notes close with folders, tags, and saved dashboard layouts.
 
 ### Space for your ideas
 
 - Create independent note-wall boards, each with its own notes, tasks, files, links, and layout.
+- Group selected notes and tasks into customizable folders, spread folder contents in different directions, and locate items from the docked branched sidebar.
+- Switch between recent boards and workspace destinations from the board title; navigation asks before leaving.
 - Write notes in Markdown; pin links, clip web pages, and connect related ideas.
 - Record voice notes with a live waveform, review playback, and discard or add recordings to the board. Audio nodes include seek and playback-speed controls.
 - Pan, zoom, filter, and tidy your wall. Changes save locally, with undo and redo.
 - Export wall data as JSON. Custom boards also support media-inclusive ZIP backups.
+
+### A little Pip on the landing page
+
+- Pip flies with the cursor, settles without covering content, and plays a random surprise animation when clicked.
 
 ### The details that make it yours
 

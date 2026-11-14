@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import PipIcon from "./PipIcon";
+import taskCelebrationBird from "../assets/pipbird/Chibi Bird Task Celebration Animation.gif";
+import stretchReminderBird from "../assets/pipbird/Kawaii Bird Stretch Reminder Animation.gif";
+import waterReminderBird from "../assets/pipbird/Cute Bird Water Reminder Animation.gif";
 import "../styles/DigitalPet.css";
 
 const WIDGET_IDS = ["timer", "weather", "tasks", "youtube", "analytics", "notes"];
-const WELLNESS_REMINDERS = [
-  "A little water break, please!",
-  "Stand up and give your shoulders a stretch.",
-  "Your eyes deserve a look at something far away.",
-  "Step outside for a breath of fresh air?",
-];
+const WATER_REMINDER = "Time for a sip of water.";
 
 export default function DigitalPet({ layout, minimizedWidgets }) {
   const [visit, setVisit] = useState(null);
@@ -18,7 +15,7 @@ export default function DigitalPet({ layout, minimizedWidgets }) {
   layoutRef.current = layout;
   minimizedRef.current = minimizedWidgets;
 
-  const showReminder = (message) => {
+  const showReminder = (message, animation) => {
     const visibleWidgets = WIDGET_IDS.filter((id) => {
       const widget = layoutRef.current[id];
       if (!widget) return false;
@@ -29,41 +26,45 @@ export default function DigitalPet({ layout, minimizedWidgets }) {
     });
     const candidates = visibleWidgets.length ? visibleWidgets : ["timer"];
     const widgetId = candidates[Math.floor(Math.random() * candidates.length)];
-    setVisit({ id: ++visitIdRef.current, widgetId, message });
+    setVisit({ id: ++visitIdRef.current, widgetId, message, animation });
   };
 
   useEffect(() => {
-    const arrive = setTimeout(() => showReminder("Pip says: take a sip of water and settle in."), 3200);
-    const reminderInterval = setInterval(
-      () => showReminder(WELLNESS_REMINDERS[Math.floor(Math.random() * WELLNESS_REMINDERS.length)]),
-      20 * 60 * 1000,
-    );
+    const showWaterReminder = () => showReminder(WATER_REMINDER, waterReminderBird);
+    const arrive = setTimeout(showWaterReminder, 3200);
+    const reminderInterval = setInterval(showWaterReminder, 20 * 60 * 1000);
     const handlePhaseChange = (event) => {
-      const message = event.detail?.mode === "break"
-        ? WELLNESS_REMINDERS[Math.floor(Math.random() * WELLNESS_REMINDERS.length)]
-        : "Break complete. Roll your shoulders and ease back into focus.";
-      showReminder(message);
+      if (event.detail?.mode === "break") {
+        clearTimeout(arrive);
+        showReminder("Focus complete. Take a stretch during your break.", stretchReminderBird);
+      } else if (event.detail?.mode === "focus") {
+        clearTimeout(arrive);
+        showReminder("Break complete. Keep water nearby as you focus.", waterReminderBird);
+      }
     };
-    const handleTaskReminder = (event) => {
-      const taskTitles = event.detail?.tasks?.map((task) => task.title).filter(Boolean) || [];
-      const message = taskTitles.length === 1
-        ? `Time check: did you finish “${taskTitles[0]}”?`
-        : `Your task reminder is here. Did you finish ${taskTitles.length} tasks?`;
-      showReminder(message);
+    const handlePomodoroStarted = (event) => {
+      clearTimeout(arrive);
+      if (event.detail?.mode === "focus") {
+        showReminder("Focus time. Keep water nearby.", waterReminderBird);
+      }
     };
     const handleTaskCompleted = (event) => {
+      clearTimeout(arrive);
       const title = event.detail?.title;
-      showReminder(title ? `Pip is proud of you. “${title}” is done!` : "Pip is proud of you. One more thing done!");
+      const message = title
+        ? `Pip is proud of you. “${title}” is done!`
+        : "Pip is proud of you. One more thing done!";
+      showReminder(message, taskCelebrationBird);
     };
 
     window.addEventListener("pomodoro-phase-changed", handlePhaseChange);
-    window.addEventListener("task-reminder-due", handleTaskReminder);
+    window.addEventListener("pomodoro-started", handlePomodoroStarted);
     window.addEventListener("task-completed", handleTaskCompleted);
     return () => {
       clearTimeout(arrive);
       clearInterval(reminderInterval);
       window.removeEventListener("pomodoro-phase-changed", handlePhaseChange);
-      window.removeEventListener("task-reminder-due", handleTaskReminder);
+      window.removeEventListener("pomodoro-started", handlePomodoroStarted);
       window.removeEventListener("task-completed", handleTaskCompleted);
     };
   }, []);
@@ -99,7 +100,7 @@ export default function DigitalPet({ layout, minimizedWidgets }) {
         title="Click Pip to dismiss"
         onClick={() => setVisit(null)}
       >
-        <PipIcon className="piper-bird" label="Pip the little blue-crested bird" />
+        <img className="piper-bird" src={visit.animation} alt="" draggable="false" />
       </button>
     </div>
   );

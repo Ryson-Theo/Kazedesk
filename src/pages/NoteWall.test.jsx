@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteWall from './NoteWall';
 import { storageManager } from '../utils/localStorage';
@@ -17,6 +17,13 @@ vi.mock('../utils/noteWallMedia', async (importOriginal) => {
   };
 });
 
+const openAddItemsMenu = () => fireEvent.click(document.querySelector('.note-wall-add-menu > summary'));
+
+function CurrentPath() {
+  const { pathname } = useLocation();
+  return <output aria-label="Current path">{pathname}</output>;
+}
+
 describe('NoteWall', () => {
   beforeEach(() => {
     localStorage.setItem('kazedesk_sticky_notes', JSON.stringify([
@@ -25,6 +32,7 @@ describe('NoteWall', () => {
     ]));
     localStorage.setItem('kazedesk_note_categories', JSON.stringify(['Inbox', 'Work']));
     localStorage.setItem('kazedesk_tasks', JSON.stringify([]));
+    localStorage.removeItem('kazedesk_note_wall_boards');
     localStorage.setItem('kazedesk-landing-theme', 'dark');
     localStorage.removeItem('kazedesk_note_wall');
   });
@@ -115,15 +123,216 @@ describe('NoteWall', () => {
     expect(localStorage.getItem('kazedesk-landing-theme')).toBe('light');
   });
 
+  it('groups selected notes and tasks in a collapsible folder', async () => {
+    localStorage.setItem('kazedesk_tasks', JSON.stringify([
+      { id: 'task-1', title: 'Review plan', category: 'Inbox', completed: false },
+    ]));
+    const { container } = render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+    fireEvent.click(screen.getByLabelText('Select Idea one card to change its color'));
+    fireEvent.click(screen.getByLabelText('Task Review plan in Inbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Group 2 selected items' }));
+
+    await waitFor(() => {
+      expect(storageManager.getNoteWall().groups).toMatchObject([
+        {
+          name: 'Group 1',
+          items: [
+            { type: 'note', id: '1' },
+            { type: 'task', id: 'task-1' },
+          ],
+        },
+      ]);
+    });
+    expect(screen.queryByText('Idea one', { selector: 'strong' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Task Review plan in Inbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open group Group 1' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open group Group 1' }));
+    expect(screen.getByText('Idea one', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Task Review plan in Inbox')).toBeInTheDocument();
+    expect(container.querySelectorAll('.note-wall-group-thread')).toHaveLength(2);
+    await waitFor(() => {
+      const { groups, positions, taskPositions } = storageManager.getNoteWall();
+      expect(groups[0]).toMatchObject({ spreadDirection: 'right', spreadApplied: true });
+      expect(positions[groups[0].items[0].id].x).toBeGreaterThan(groups[0].position.x + 240);
+      expect(taskPositions[groups[0].items[1].id].y).toBeGreaterThan(positions[groups[0].items[0].id].y);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close group Group 1' }));
+    expect(screen.queryByText('Idea one', { selector: 'strong' })).not.toBeInTheDocument();
+  });
+
+  it('spreads items to a chosen side and connects the folder to the arranged items', async () => {
+    const { container } = render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+    fireEvent.click(screen.getByLabelText('Select Idea one card to change its color'));
+    fireEvent.click(screen.getByLabelText('Select Idea two card to change its color'));
+    fireEvent.click(screen.getByRole('button', { name: 'Group 2 selected items' }));
+
+    const folder = await screen.findByRole('button', { name: 'Open group Group 1' });
+    fireEvent.contextMenu(folder, { clientX: 120, clientY: 100 });
+    expect(screen.getByRole('button', { name: 'Spread right' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Spread left' }));
+    await waitFor(() => expect(storageManager.getNoteWall().groups[0].spreadDirection).toBe('left'));
+    fireEvent.click(folder);
+
+    await waitFor(() => expect(storageManager.getNoteWall().groups[0].spreadApplied).toBe(true));
+    const { groups, positions } = storageManager.getNoteWall();
+    const group = groups[0];
+    const notePositions = group.items.map((item) => positions[item.id]).sort((a, b) => a.y - b.y);
+    expect(notePositions.every((position) => position.x < group.position.x)).toBe(true);
+    expect(notePositions[0].y + 190).toBeLessThanOrEqual(notePositions[1].y);
+    expect(container.querySelector('.note-wall-group-thread').getAttribute('d')).toMatch(
+      new RegExp(`^M ${group.position.x} ${group.position.y + 24} C`),
+    );
+  });
+
+  it('shows folder contents in the branched board index and centers a selected item', async () => {
+    storageManager.saveNoteWall({
+      positions: { 1: { x: 420, y: 360 }, 2: { x: 900, y: 700 } },
+      groups: [{
+        id: 'research-group',
+        name: 'Research',
+        color: '#a78bfa',
+        position: { x: 80, y: 100 },
+        items: [{ type: 'note', id: '1' }],
+      }],
+    });
+    const { container } = render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    const viewport = container.querySelector('.note-wall-scroll');
+    viewport.scrollTo = vi.fn();
+
+    const sidebarToggle = screen.getByRole('button', { name: 'Open board item sidebar' });
+    expect(sidebarToggle.closest('.note-wall-toolbar')).toBeInTheDocument();
+    fireEvent.click(sidebarToggle);
+    expect(screen.getByRole('navigation', { name: 'Board item navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Work/ })).toBeInTheDocument();
+    expect(container.querySelector('.note-wall-sidebar')).toHaveClass('is-open');
+    expect(container.querySelector('.note-wall-sidebar').parentElement).toBe(container.querySelector('.note-wall-content'));
+
+    const groupSection = [...container.querySelectorAll('.branched-menu__section')]
+      .find((section) => section.querySelector('.branched-menu__head')?.textContent.includes('Group · Research'));
+    fireEvent.click(within(groupSection).getByRole('button', { name: 'note: Idea one' }));
+
+    await waitFor(() => expect(storageManager.getNoteWall().groups[0].spreadApplied).toBe(true));
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem('kazedesk_note_wall')).groups[0]).toMatchObject({
+        id: 'research-group',
+        spreadApplied: true,
+        spreadDirection: 'right',
+      });
+    });
+    await waitFor(() => expect(viewport.scrollTo).toHaveBeenCalledWith(expect.objectContaining({
+      left: expect.any(Number),
+      top: expect.any(Number),
+      behavior: expect.any(String),
+    })));
+    expect(screen.getByRole('button', { name: 'Close group Research' })).toBeInTheDocument();
+  });
+
+  it('provides the same item navigation on an independent custom board', async () => {
+    const board = storageManager.createNoteWallBoard('Navigation test');
+    storageManager.updateNoteWallBoard(board.id, {
+      notes: [{ id: 'board-note', title: 'Board idea', text: 'Independent board note', category: 'Ideas' }],
+      categories: ['Inbox', 'Ideas'],
+      tasks: [],
+      wall: {
+        positions: { 'board-note': { x: 700, y: 460 } },
+        groups: [{
+          id: 'board-group',
+          name: 'Ideas Group',
+          color: '#a78bfa',
+          position: { x: 80, y: 100 },
+          items: [{ type: 'note', id: 'board-note' }],
+        }],
+      },
+    });
+    const { container } = render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+    const viewport = container.querySelector('.note-wall-scroll');
+    viewport.scrollTo = vi.fn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open board item sidebar' }));
+    const navigation = screen.getByRole('navigation', { name: 'Board item navigation' });
+    const groupSection = [...navigation.querySelectorAll('.branched-menu__section')]
+      .find((section) => section.querySelector('.branched-menu__head')?.textContent.includes('Group · Ideas Group'));
+    fireEvent.click(within(groupSection).getByRole('button', { name: 'note: Board idea' }));
+
+    await waitFor(() => expect(viewport.scrollTo).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(storageManager.getNoteWallBoard(board.id).wall.groups[0]).toMatchObject({
+        id: 'board-group',
+        spreadApplied: true,
+        spreadDirection: 'right',
+      });
+    });
+  });
+
+  it('marquee-selects covered items and groups them from the right-click menu', async () => {
+    const { container } = render(<MemoryRouter><NoteWall /></MemoryRouter>);
+    const scroll = container.querySelector('.note-wall-scroll');
+    const board = container.querySelector('.note-wall-board');
+    const setBounds = (element, left, top, width, height) => {
+      element.getBoundingClientRect = () => ({
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height,
+      });
+    };
+    setBounds(scroll, 0, 0, 1000, 800);
+    setBounds(container.querySelector('[data-node-type="note"][data-node-id="1"]'), 40, 40, 220, 150);
+    setBounds(container.querySelector('[data-node-type="note"][data-node-id="2"]'), 300, 60, 220, 150);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+    fireEvent.pointerDown(board, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(window, { clientX: 560, clientY: 240 });
+    fireEvent.pointerUp(window, { clientX: 560, clientY: 240 });
+
+    expect(screen.getByRole('button', { name: 'Group 2 selected items' })).toBeInTheDocument();
+    fireEvent.contextMenu(board, { clientX: 580, clientY: 260 });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Group 2 items into folder' }));
+
+    await waitFor(() => expect(storageManager.getNoteWall().groups).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Open group Group 1' })).toBeInTheDocument();
+  });
+
+  it('renames and recolors a group from its right-click menu, and can ungroup it', async () => {
+    render(<MemoryRouter><NoteWall /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+    fireEvent.click(screen.getByLabelText('Select Idea one card to change its color'));
+    fireEvent.click(screen.getByLabelText('Select Idea two card to change its color'));
+    fireEvent.click(screen.getByRole('button', { name: 'Group 2 selected items' }));
+
+    const groupFolder = await screen.findByRole('button', { name: 'Open group Group 1' });
+    fireEvent.contextMenu(groupFolder, { clientX: 120, clientY: 100 });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename group' }));
+    fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Research' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save group name' }));
+
+    await waitFor(() => expect(storageManager.getNoteWall().groups[0].name).toBe('Research'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open group Research' }), { clientX: 120, clientY: 100 });
+    fireEvent.change(screen.getByLabelText('Folder color'), { target: { value: '#22c55e' } });
+    await waitFor(() => expect(storageManager.getNoteWall().groups[0].color).toBe('#22c55e'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ungroup items' }));
+
+    await waitFor(() => expect(storageManager.getNoteWall().groups).toHaveLength(0));
+    expect(screen.getByText('Idea one', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('Idea two', { selector: 'strong' })).toBeInTheDocument();
+  });
+
   it('shows compact accessible board stats and groups secondary toolbar actions', async () => {
     render(<MemoryRouter><NoteWall /></MemoryRouter>);
 
-    expect(screen.getByRole('link', { name: 'Back to dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose a board or workspace. Current: Sticky note wall' })).toBeInTheDocument();
     expect(screen.getByLabelText('2 notes')).toBeInTheDocument();
     expect(screen.getByLabelText('0 tasks')).toBeInTheDocument();
     expect(await screen.findByRole('status', { name: 'Changes saved locally' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     expect(screen.getByRole('button', { name: 'Add attachment' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add link' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Web clipper' })).toBeInTheDocument();
@@ -135,6 +344,61 @@ describe('NoteWall', () => {
     expect(screen.getByRole('button', { name: 'Export JSON' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download backup ZIP' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Import JSON' })).toBeInTheDocument();
+  });
+
+  it('switches from the board name with confirmation and lists at most three recent boards', async () => {
+    const boards = Array.from({ length: 5 }, (_, index) => storageManager.createNoteWallBoard(`Recent ${index + 1}`));
+    boards.forEach((board, index) => {
+      storageManager.updateNoteWallBoard(board.id, {
+        lastOpenedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      });
+    });
+    const currentBoard = boards[4];
+    render(
+      <MemoryRouter initialEntries={[`/wall/boards/${currentBoard.id}`]}>
+        <Routes>
+          <Route path="/wall/boards/:boardId" element={<NoteWall boardId={currentBoard.id} />} />
+          <Route path="/dashboard" element={<p>Workspace destination</p>} />
+        </Routes>
+        <CurrentPath />
+      </MemoryRouter>,
+    );
+
+    const switcher = screen.getByRole('button', { name: `Choose a board or workspace. Current: ${currentBoard.name}` });
+    fireEvent.mouseEnter(switcher);
+    const menu = await screen.findByRole('menu', { name: 'Board and workspace navigation' });
+    expect(within(menu).getByRole('menuitem', { name: 'Workspace' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Dashboard note wall' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Back to boards' })).toBeInTheDocument();
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(6);
+    expect(within(menu).getByRole('menuitem', { name: 'Recent 4' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Recent 3' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Recent 2' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Recent 1' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Workspace' }));
+    const confirmation = screen.getByRole('alertdialog', { name: 'Leave this board?' });
+    expect(confirmation).toHaveTextContent('heading to Workspace');
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(`/wall/boards/${currentBoard.id}`);
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Stay here' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(switcher);
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Workspace' }));
+    fireEvent.click(screen.getByRole('alertdialog').querySelector('.note-wall-delete-confirm'));
+    expect(await screen.findByText('Workspace destination')).toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard');
+  });
+
+  it('does not offer a separate folder action in the board add-items menu', () => {
+    const board = storageManager.createNoteWallBoard('Project board');
+    storageManager.saveNoteWallBoard(board.id, {
+      notes: [{ id: 'board-note', title: 'Board note', text: 'Keep this note' }],
+    });
+    render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
+
+    openAddItemsMenu();
+    expect(screen.queryByRole('button', { name: 'New folder' })).not.toBeInTheDocument();
   });
 
   it('exports the workspace as JSON and does not offer a ZIP backup', async () => {
@@ -311,7 +575,7 @@ describe('NoteWall', () => {
 
     try {
       render(<MemoryRouter><NoteWall /></MemoryRouter>);
-      fireEvent.click(screen.getByText('Add items'));
+      openAddItemsMenu();
       fireEvent.click(screen.getByRole('button', { name: 'Record voice note' }));
       await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true }));
       const recordingDialog = screen.getByRole('dialog', { name: 'Recording your voice note' });
@@ -383,7 +647,7 @@ describe('NoteWall', () => {
 
     try {
       render(<MemoryRouter><NoteWall /></MemoryRouter>);
-      fireEvent.click(screen.getByText('Add items'));
+      openAddItemsMenu();
       fireEvent.click(screen.getByRole('button', { name: 'Record voice note' }));
       await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
       fireEvent.click(await screen.findByRole('button', { name: 'Stop recording' }));
@@ -874,14 +1138,14 @@ describe('NoteWall', () => {
     const pinMenu = document.querySelector('.note-wall-webclip-pin-menu');
     fireEvent.click(screen.getByRole('button', { name: 'Pin Outside click link to a note' }));
     expect(pinMenu).toHaveAttribute('open');
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Add task', exact: true }));
     expect(pinMenu).not.toHaveAttribute('open');
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions for link Outside click link' }));
     const actionMenu = document.querySelector('.note-wall-link-actions-menu');
     expect(actionMenu).toHaveAttribute('open');
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Add note', exact: true }));
     expect(actionMenu).not.toHaveAttribute('open');
   });
@@ -978,12 +1242,12 @@ describe('NoteWall', () => {
     render(<MemoryRouter><NoteWall boardId={board.id} /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: 'Research' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     fireEvent.click(screen.getAllByRole('button', { name: 'New folder', exact: true })[0]);
     fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Ideas' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create folder' }));
 
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     fireEvent.click(screen.getAllByRole('button', { name: 'Add note', exact: true })[0]);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Project thought' } });
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Keep this on the research board.' } });
@@ -993,7 +1257,7 @@ describe('NoteWall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
     expect(await screen.findByText('Project thought', { selector: 'strong' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Add items'));
+    openAddItemsMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Add task', exact: true }));
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Review research' } });
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'high' } });
@@ -1258,10 +1522,10 @@ describe('NoteWall', () => {
     render(<MemoryRouter><NoteWall /></MemoryRouter>);
 
     expect(screen.getByLabelText('Task Unfiled task in Inbox')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Hide orphan tasks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide inbox tasks' }));
     expect(screen.queryByLabelText('Task Unfiled task in Inbox')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Task Filed task in Work')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show orphan tasks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show inbox tasks' }));
     expect(screen.getByLabelText('Task Unfiled task in Inbox')).toBeInTheDocument();
   });
 

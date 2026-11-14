@@ -3,6 +3,7 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import LandingNavbar from "../components/landing/LandingNavbar";
 import LandingHero from "../components/landing/LandingHero";
+import LandingPip from "../components/landing/LandingPip";
 import LandingFooter from "../components/landing/LandingFooter";
 import HowItWorksSection from "../components/landing/HowItWorksSection";
 import GifDropSection from "../components/landing/GifDropSection";
@@ -70,6 +71,7 @@ export default function LandingPage() {
 
   return (
     <main className={`landing-page landing-theme-${theme}`} ref={pageRef}>
+      <LandingPip />
       <LandingNavbar theme={theme} onToggleTheme={toggleTheme} />
       <LandingHero theme={theme} />
       <FeatureGrid theme={theme} />

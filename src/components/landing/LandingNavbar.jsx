@@ -15,7 +15,7 @@ export default function LandingNavbar({ theme, onToggleTheme }) {
   return (
     <header className="landing-header">
       <a className="landing-brand" href="#top" aria-label="Kazedesk home">
-        <span className="landing-brand-mark"><PipIcon className="kazedesk-pip-icon" size={25} /></span><span>Kazedesk</span>
+        <span className="landing-brand-mark"><PipIcon className="kazedesk-pip-icon" size={44} /></span><span>Kazedesk</span>
       </a>
       <nav className={`landing-nav ${menuOpen ? "is-open" : ""}`} aria-label="Main navigation">
         {NAV_LINKS.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}

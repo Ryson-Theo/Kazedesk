@@ -204,6 +204,7 @@ export default function PomodoroTimer() {
     if (!activeSegmentStartedAtRef.current) {
       activeSegmentStartedAtRef.current = new Date().toISOString();
     }
+    window.dispatchEvent(new CustomEvent("pomodoro-started", { detail: { mode } }));
     setRunning(true);
   };
 

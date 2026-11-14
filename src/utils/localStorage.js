@@ -36,7 +36,7 @@ const BACKUP_JSON_TYPES = {
 };
 
 function getEmptyNoteWall() {
-  return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], comments: {} };
+  return { positions: {}, sizes: {}, taskPositions: {}, connections: [], attachments: [], webClips: [], groups: [], comments: {} };
 }
 
 function normalizeNoteWall(wall) {
@@ -47,6 +47,27 @@ function normalizeNoteWall(wall) {
     connections: Array.isArray(wall?.connections) ? wall.connections : [],
     attachments: Array.isArray(wall?.attachments) ? wall.attachments : [],
     webClips: Array.isArray(wall?.webClips) ? wall.webClips : [],
+    groups: Array.isArray(wall?.groups)
+      ? wall.groups
+        .filter((group) => group && typeof group.id === 'string' && Array.isArray(group.items))
+        .map((group) => ({
+          id: group.id,
+          name: typeof group.name === 'string' && group.name.trim() ? group.name.trim().slice(0, 80) : 'Group',
+          color: typeof group.color === 'string' && /^#[\da-f]{6}$/i.test(group.color) ? group.color : '#a78bfa',
+          spreadDirection: ['right', 'left', 'above', 'below'].includes(group.spreadDirection) ? group.spreadDirection : 'right',
+          spreadApplied: group.spreadApplied === true,
+          position: group.position
+            && Number.isFinite(group.position.x)
+            && Number.isFinite(group.position.y)
+            ? { x: Math.max(0, group.position.x), y: Math.max(0, group.position.y) }
+            : { x: 30, y: 30 },
+          items: group.items.filter((item) => item
+            && ['note', 'task', 'attachment', 'webclip'].includes(item.type)
+            && ['string', 'number'].includes(typeof item.id))
+            .map((item) => ({ type: item.type, id: String(item.id) })),
+        }))
+        .filter((group) => group.items.length)
+      : [],
     comments: wall?.comments && typeof wall.comments === 'object' && !Array.isArray(wall.comments)
       ? Object.fromEntries(Object.entries(wall.comments).map(([key, comments]) => [
         key,
@@ -167,6 +188,24 @@ export const storageManager = {
     } catch {
       return [];
     }
+  },
+  getRecentNoteWallBoards: (limit = 3, excludedId = null) => storageManager.getNoteWallBoards()
+    .filter((board) => board.id !== excludedId)
+    .sort((a, b) => {
+      const getVisitTime = (board) => {
+        const timestamp = Date.parse(board.lastOpenedAt || board.updatedAt || board.createdAt || '');
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      };
+      return getVisitTime(b) - getVisitTime(a);
+    })
+    .slice(0, Math.max(0, Math.floor(limit))),
+  recordNoteWallBoardVisit: (id) => {
+    const boards = storageManager.getNoteWallBoards();
+    const index = boards.findIndex((board) => board.id === id);
+    if (index < 0) throw new Error('This board no longer exists.');
+    boards[index] = { ...boards[index], lastOpenedAt: new Date().toISOString() };
+    localStorage.setItem(STORAGE_KEYS.NOTE_WALL_BOARDS, JSON.stringify(boards));
+    return boards[index];
   },
   getNoteWallBoard: (id) => storageManager.getNoteWallBoards().find((board) => board.id === id) || null,
   createNoteWallBoard: (value) => {

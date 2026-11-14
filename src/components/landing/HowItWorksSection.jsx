@@ -28,17 +28,17 @@ const RELEASES_URL = `${LANDING_LINKS.github.replace(
   "https://api.github.com/repos/"
 )}/releases?per_page=3`;
 const FALLBACK_RELEASE = {
-  name: "Kazedesk v0.2.0",
-  tag_name: "v0.2.0",
-  html_url: `${LANDING_LINKS.github}/releases/tag/v0.2.0`,
-  published_at: "2026-11-07T04:28:37Z",
-  body: `Kazedesk keeps its calm, customizable workspace and adds a richer, more flexible Note Wall, along with improvements across the dashboard and mobile experience.
+  name: "Kazedesk v0.2.1",
+  tag_name: "v0.2.1",
+  html_url: `${LANDING_LINKS.github}/releases/tag/v0.2.1`,
+  published_at: "2026-11-14T10:37:16Z",
+  body: `Kazedesk brings Pip into the workspace and makes organizing and navigating note-wall boards feel more natural.
 
-## What’s new
-- Create independent Note Wall boards for separate projects and ideas
-- Add and arrange image, PDF, and audio files on your wall
-- Record voice notes, rename attachments, and use the web clipper to save links
-- Connect related notes and files, with improved connection controls for mobile and touch devices`,
+## Highlights
+- Pip follows the cursor, settles around the landing page, and plays a surprise animation when clicked
+- Workspace Pip reminders celebrate completed tasks and call out focus starts, stretch breaks, and water breaks
+- Group wall items into locally saved folders, spread them around a folder, and find them in the branched sidebar
+- Switch among the three most recently opened boards, the dashboard wall, and workspace with a leave confirmation`,
 };
 
 const STEPS = [

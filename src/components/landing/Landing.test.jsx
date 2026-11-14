@@ -3,6 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LandingHero from "./LandingHero";
 import HowItWorksSection from "./HowItWorksSection";
+import LandingNavbar from "./LandingNavbar";
+import InfoPageLayout from "./InfoPageLayout";
 import darkHeroImage from "../../assets/hero images/dark.jpg";
 import lightHeroImage from "../../assets/hero images/light.jpg";
 import { FeatureGrid, OpenSourceSection } from "./LandingSections";
@@ -69,17 +71,20 @@ describe("landing page", () => {
 
   it("shows the latest known release when GitHub is rate limited or unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
-    render(<HowItWorksSection />);
+    const { container } = render(<HowItWorksSection />);
 
-    expect(await screen.findByText("Kazedesk v0.2.0")).toBeInTheDocument();
+    expect(await screen.findByText("Kazedesk v0.2.1")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/showing the latest release available here/i);
+    expect(container.querySelector(".release-note-highlights").textContent).toContain(
+      "Pip follows the cursor, settles around the landing page"
+    );
     expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
       "href",
       "https://github.com/Ryson-Theo/Kazedesk/releases"
     );
     expect(screen.getByRole("link", { name: /read full release notes/i })).toHaveAttribute(
       "href",
-      "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v0.2.0"
+      "https://github.com/Ryson-Theo/Kazedesk/releases/tag/v0.2.1"
     );
   });
 
@@ -122,6 +127,36 @@ describe("landing page", () => {
 
     expect(screen.getByRole("heading", { name: "Kazedesk" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "Kazedesk" })).toHaveLength(1);
+  });
+
+  it("uses the settled Pip animation in the landing and information-page navigation", () => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <LandingNavbar theme="dark" onToggleTheme={() => {}} />
+      </MemoryRouter>
+    );
+    const landingBrand = screen.getByRole("link", { name: "Kazedesk home" });
+    const landingPip = landingBrand.querySelector("img");
+    expect(landingPip).toHaveAttribute("width", "44");
+    expect(landingPip).toHaveAttribute(
+      "src",
+      expect.stringContaining("Chibi%20Bird%20Sticker%20Animation%20Frames")
+    );
+    expect(landingBrand.querySelector("svg")).toBeNull();
+
+    unmount();
+    render(
+      <MemoryRouter>
+        <InfoPageLayout pageTitle="Privacy">
+          <main>Privacy details</main>
+        </InfoPageLayout>
+      </MemoryRouter>
+    );
+    const infoBrand = screen.getByRole("link", { name: "Kazedesk home" });
+    expect(infoBrand.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("Chibi%20Bird%20Sticker%20Animation%20Frames")
+    );
   });
 
   it("uses the hero artwork that matches the selected theme", () => {

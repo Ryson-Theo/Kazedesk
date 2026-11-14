@@ -88,6 +88,12 @@ flowchart TD
 
 The page components compose the UI; widgets encapsulate feature behavior. Shared persistence helpers centralize common storage operations, while some legacy settings remain owned by their widgets.
 
+## Pip and board navigation
+
+The landing page's `LandingPip` follows the pointer, settles in open areas, and changes to a random animation when clicked. The shared `PipIcon` brand mark uses the settled Pip GIF in the landing navigation, footer, and information-page headers. The dashboard's `DigitalPet` listens for focus-session and task-completion events to show the matching reminder animation.
+
+The Note Wall toolbar's board-name switcher links to the workspace, dashboard wall, board manager, and up to three recently opened boards. Opening a custom board records its last-opened timestamp in the existing board storage. Choosing a destination opens a confirmation before navigation. Board groups and their spread settings remain part of the locally persisted board data; the docked branched sidebar indexes folders and their contents.
+
 ## Data and persistence
 
 - Data is scoped to the website origin and browser profile.
