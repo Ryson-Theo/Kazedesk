@@ -80,7 +80,8 @@
 .apple-sky-weather {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 0;
   max-width: calc(100% - 8px);
   white-space: nowrap;
   opacity: 0.7;
@@ -93,6 +94,8 @@
 }
 
 .apple-sky-temperature {
+  position: relative;
+  top: 10px;
   font-size: clamp(0.8rem, 3cqw, 1.15rem);
   font-weight: 650;
   color: rgba(255, 255, 255, 0.9);

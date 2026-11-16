@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import WeatherTime from "./WeatherTime";
 import {
@@ -126,7 +126,7 @@ describe("WeatherTime", () => {
     unmount();
   });
 
-  it("shows temperature without a weather icon for clear conditions", async () => {
+  it("shows Celsius first for clear conditions", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
         results: [{ name: "Tokyo", latitude: 35.6762, longitude: 139.6503 }]
@@ -147,12 +147,19 @@ describe("WeatherTime", () => {
 
     render(<WeatherTime />);
 
-    expect(await screen.findByText("18°")).toBeInTheDocument();
-    expect(document.querySelector(".apple-sky-weather-icon")).not.toBeInTheDocument();
+    expect(await screen.findByText("18°C")).toBeInTheDocument();
+    expect(document.querySelector(".apple-sky-weather-icon.sunny")).not.toBeInTheDocument();
     expect(document.querySelectorAll(".apple-sky-marker.is-positioned")).toHaveLength(0);
   });
 
-  it("does not show a sun icon for mainly clear weather", async () => {
+  it.each([
+    { code: 0, icon: "sunny" },
+    { code: 1, icon: "sunny" },
+    { code: 3, icon: "cloudy" },
+    { code: 63, icon: "rain" },
+    { code: 95, icon: "storm" },
+  ])("shows the matching weather icon for code $code", async ({ code, icon }) => {
+    vi.useFakeTimers();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
         results: [{ name: "Tokyo", latitude: 35.6762, longitude: 139.6503 }]
@@ -162,7 +169,7 @@ describe("WeatherTime", () => {
           temperature_2m: 18,
           apparent_temperature: 17,
           relative_humidity_2m: 62,
-          weather_code: 1
+          weather_code: code
         },
         daily: {
           sunrise: ["2024-01-01T06:00", "2024-01-02T06:01"],
@@ -170,11 +177,75 @@ describe("WeatherTime", () => {
         }
       }));
     vi.stubGlobal("fetch", fetchMock);
+    const view = render(<WeatherTime />);
 
-    render(<WeatherTime />);
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("18°C")).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(document.querySelector(`.apple-sky-weather-icon.${icon}`)).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
 
-    expect(await screen.findByText("18°")).toBeInTheDocument();
-    expect(document.querySelector(".apple-sky-weather-icon")).not.toBeInTheDocument();
+  it("shows temperature for 3 seconds, then the weather icon, repeating every 30 seconds", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        results: [{ name: "Tokyo", latitude: 35.6762, longitude: 139.6503 }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        current: {
+          temperature_2m: 18,
+          apparent_temperature: 17,
+          relative_humidity_2m: 62,
+          weather_code: 63
+        },
+        daily: {
+          sunrise: ["2024-01-01T06:00", "2024-01-02T06:01"],
+          sunset: ["2024-01-01T18:00", "2024-01-02T18:00"]
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(<WeatherTime />);
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("18°C")).toBeInTheDocument();
+      expect(document.querySelector(".apple-sky-weather-icon.rain")).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.queryByText("18°C")).not.toBeInTheDocument();
+      expect(document.querySelector(".apple-sky-weather-icon.rain")).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText("18°C")).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(24_000);
+      });
+      expect(screen.getByText("18°C")).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(document.querySelector(".apple-sky-weather-icon.rain")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it("loads weather, displays attribution, and reuses cached results", async () => {
@@ -197,7 +268,7 @@ describe("WeatherTime", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const firstRender = render(<WeatherTime />);
-    expect(await screen.findByText("19°")).toBeInTheDocument();
+    expect(await screen.findByText("19°C")).toBeInTheDocument();
     expect(await screen.findByTestId("weather-feels-like")).toHaveTextContent("Feels like 17°");
     expect(screen.getByRole("link", { name: "Weather data by Open-Meteo.com" })).toHaveAttribute(
       "href",
@@ -207,11 +278,12 @@ describe("WeatherTime", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("geocoding-api.open-meteo.com");
     expect(fetchMock.mock.calls[1][0]).toContain("apparent_temperature");
     expect(fetchMock.mock.calls[1][0]).toContain("daily=sunrise,sunset");
+    expect(fetchMock.mock.calls[1][0]).toContain("temperature_unit=celsius");
 
     firstRender.unmount();
     render(<WeatherTime />);
 
-    await waitFor(() => expect(screen.getByText("19°")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("19°C")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

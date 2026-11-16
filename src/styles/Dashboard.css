@@ -1476,30 +1476,35 @@
     right: auto;
     bottom: auto;
     margin-bottom: 0;
-    padding: 0 14px;
+    padding: 0 14px calc(78px + env(safe-area-inset-bottom, 0px));
     text-align: center;
   }
 
   .bottomAmbient {
-    position: relative;
-    inset: auto;
-    height: auto;
-    margin: 14px auto 0;
-    pointer-events: auto;
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 0;
+    height: 0;
+    margin: 0;
+    pointer-events: none;
   }
 
-  .minimized-widget-dock:not(.minimized-widget-dock-embedded) {
-    position: relative;
-    inset: auto;
-    margin: 14px auto 0;
-    transform: none;
+  .bottomAmbient:not(.bottomAmbient-with-dock) .ambient-strip {
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .minimized-widget-dock-bottom {
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
   .ambient-strip {
-    position: relative;
-    inset: auto;
-    margin: 0 auto;
-    transform: none;
+    position: fixed;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    margin: 0;
+    transform: translateX(-50%);
   }
 
   .digital-pet-anchor {
@@ -1510,6 +1515,12 @@
     left: auto !important;
     z-index: 1001;
     transform: none;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 960px) {
+  .widget[data-widget-id="weather"] {
+    min-height: 220px;
   }
 }
 
@@ -1624,28 +1635,25 @@
   }
 
   .minimized-widget-dock-top {
-    top: 10px;
+    top: calc(10px + env(safe-area-inset-top, 0px));
   }
 
   .minimized-widget-dock-bottom {
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
   .minimized-widget-dock-left {
-    left: 8px;
+    left: max(8px, env(safe-area-inset-left, 0px));
   }
 
   .minimized-widget-dock-right {
-    right: 8px;
-  }
-
-  .minimized-widget-dock:not(.minimized-widget-dock-embedded) {
-    inset: auto;
+    right: max(8px, env(safe-area-inset-right, 0px));
   }
 
   .ambient-strip {
-    bottom: auto;
-    left: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   .dashboard-attribution {

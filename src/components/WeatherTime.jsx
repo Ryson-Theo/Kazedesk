@@ -12,13 +12,13 @@ import {
   MapPin,
   Droplets
 } from "lucide-react";
+import { gsap } from "gsap";
 import { reserveWeatherRequest } from "../utils/weatherRequestLimiter";
 import {
   getNightArcGeometry,
   getNightArcPosition,
   clampSkyPosition,
-  getSkyPosition,
-  getWeatherPosition
+  getSkyPosition
 } from "../utils/weatherAnimation";
 
 import "../styles/WeatherTime.css";
@@ -46,6 +46,20 @@ function getWeatherCondition(code) {
   return "Cloudy";
 }
 
+function getWeatherIconType(code) {
+  if ([0, 1].includes(code)) return "sunny";
+  if ([2, 3].includes(code)) return "cloudy";
+  if ([45, 48].includes(code)) return "fog";
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "rain";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
+  if ([95, 96, 99].includes(code)) return "storm";
+  return "cloudy";
+}
+
+function formatTemperature(value) {
+  return Number.isFinite(value) ? `${Math.round(value)}°C` : "--°C";
+}
+
 function readWeatherCache(key, ttl) {
   try {
     const cached = JSON.parse(localStorage.getItem(`${WEATHER_CACHE_PREFIX}${key}`) || "null");
@@ -71,13 +85,15 @@ function writeWeatherCache(key, data) {
 
 export default function WeatherTime({ animationEnabled = true }) {
   const [weather, setWeather] = useState(null);
+  const [showWeatherIcon, setShowWeatherIcon] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nightArc, setNightArc] = useState(null);
   const skySceneRef = useRef(null);
   const celestialMarkerRef = useRef(null);
   const weatherMarkerRef = useRef(null);
-  const conditionRef = useRef(null);
+  const weatherIconRef = useRef(null);
   const temperatureRef = useRef(null);
+  const conditionRef = useRef(null);
   const feelsLikeRef = useRef(null);
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("weather-widget");
@@ -109,6 +125,31 @@ export default function WeatherTime({ animationEnabled = true }) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!animationEnabled) {
+      setShowWeatherIcon(false);
+      return undefined;
+    }
+
+    let iconTimeout;
+    let temperatureTimeout;
+    const showTemperatureThenIcon = () => {
+      window.clearTimeout(iconTimeout);
+      window.clearTimeout(temperatureTimeout);
+      setShowWeatherIcon(false);
+      iconTimeout = window.setTimeout(() => setShowWeatherIcon(true), 3000);
+      temperatureTimeout = window.setTimeout(() => setShowWeatherIcon(false), 6000);
+    };
+
+    showTemperatureThenIcon();
+    const cycle = window.setInterval(showTemperatureThenIcon, 30_000);
+    return () => {
+      window.clearInterval(cycle);
+      window.clearTimeout(iconTimeout);
+      window.clearTimeout(temperatureTimeout);
+    };
+  }, [animationEnabled]);
 
   useEffect(() => {
     const handleSettingsUpdate = () => {
@@ -206,7 +247,7 @@ export default function WeatherTime({ animationEnabled = true }) {
       }
 
       const weatherReq = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code&daily=sunrise,sunset&forecast_days=2&timezone=${encodeURIComponent(settings.timezone || "auto")}`,
+        `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code&daily=sunrise,sunset&forecast_days=2&temperature_unit=celsius&timezone=${encodeURIComponent(settings.timezone || "auto")}`,
         { signal }
       );
       if (!weatherReq.ok) throw new Error(`Weather request failed with status ${weatherReq.status}`);
@@ -251,15 +292,14 @@ export default function WeatherTime({ animationEnabled = true }) {
     };
   }, [loadWeather]);
 
-  function getIcon(code, size = 26, className = "apple-icon") {
-    if (code === 0) return <Sun className={`${className} sunny`} size={size} />;
-    if ([2, 3].includes(code)) return <Cloud className={`${className} cloudy`} size={size} />;
-    if ([45, 48].includes(code)) return <CloudFog className={`${className} fog`} size={size} />;
-    if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code))
-      return <CloudRain className={`${className} rain`} size={size} />;
-    if ([71, 73, 75, 77, 85, 86].includes(code))
-      return <CloudSnow className={`${className} snow`} size={size} />;
-    return <CloudLightning className={`${className} storm`} size={size} />;
+  function getIcon(code, size = 26, className = "apple-icon", ref = null) {
+    const iconType = getWeatherIconType(code);
+    if (iconType === "sunny") return <Sun ref={ref} className={`${className} sunny`} size={size} />;
+    if (iconType === "fog") return <CloudFog ref={ref} className={`${className} fog`} size={size} />;
+    if (iconType === "rain") return <CloudRain ref={ref} className={`${className} rain`} size={size} />;
+    if (iconType === "snow") return <CloudSnow ref={ref} className={`${className} snow`} size={size} />;
+    if (iconType === "storm") return <CloudLightning ref={ref} className={`${className} storm`} size={size} />;
+    return <Cloud ref={ref} className={`${className} cloudy`} size={size} />;
   }
 
   const formattedTimeParts = new Intl.DateTimeFormat("en-US", {
@@ -284,13 +324,16 @@ export default function WeatherTime({ animationEnabled = true }) {
   const condition = weatherCode === null || weatherCode === undefined
     ? "Cloudy"
     : getWeatherCondition(weatherCode);
-  const weatherPosition = getWeatherPosition(currentTime, settings.timezone);
+  const weatherIconType = weatherCode === null || weatherCode === undefined
+    ? null
+    : getWeatherIconType(weatherCode);
+  const activeWeatherDisplay = showWeatherIcon ? weatherIconType || "cloudy" : "temperature";
   const celestialPosition = nightArc
     ? getNightArcPosition(skyPosition.progress, nightArc)
     : skyPosition;
   const weatherMarkerPosition = nightArc
-    ? getNightArcPosition(weatherPosition.progress, nightArc)
-    : weatherPosition;
+    ? getNightArcPosition(0.5, nightArc)
+    : { x: 50, y: 44 };
 
   const markerPositionsRef = useRef(null);
   markerPositionsRef.current = {
@@ -389,6 +432,41 @@ export default function WeatherTime({ animationEnabled = true }) {
     weather?.temp
   ]);
 
+  useLayoutEffect(() => {
+    const element = showWeatherIcon ? weatherIconRef.current : temperatureRef.current;
+    if (
+      !animationEnabled ||
+      !element ||
+      !weather ||
+      !Number.isFinite(weather.temp) ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return undefined;
+    }
+
+    const tween = gsap.fromTo(
+      element,
+      {
+        autoAlpha: 0,
+        scale: showWeatherIcon ? 0.72 : 0.9,
+        y: showWeatherIcon ? 8 : 10,
+        rotate: showWeatherIcon ? -12 : 0,
+        transformOrigin: "center center"
+      },
+      {
+        autoAlpha: 1,
+        scale: 1,
+        y: 0,
+        rotate: 0,
+        duration: 0.45,
+        ease: showWeatherIcon ? "back.out(1.6)" : "power2.out",
+        overwrite: "auto"
+      }
+    );
+
+    return () => tween.kill();
+  }, [activeWeatherDisplay, animationEnabled, showWeatherIcon, weather?.temp]);
+
   return (
     <div className="apple-widget">
       <div className="apple-widget-header">
@@ -440,11 +518,13 @@ export default function WeatherTime({ animationEnabled = true }) {
               ref={weatherMarkerRef}
               className="apple-sky-marker apple-sky-weather"
             >
-              {weatherCode !== null && weatherCode !== undefined && weatherCode > 1 &&
-                getIcon(weatherCode, 30, "apple-sky-weather-icon")}
-              <span ref={temperatureRef} className="apple-sky-temperature">
-                {weather && weather.temp !== null ? `${Math.round(weather.temp)}°` : "--°"}
-              </span>
+              {showWeatherIcon ? (
+                getIcon(weatherCode ?? 3, 30, "apple-icon apple-sky-weather-icon", weatherIconRef)
+              ) : (
+                <span ref={temperatureRef} className="apple-sky-temperature">
+                  {formatTemperature(weather?.temp)}
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -472,7 +552,7 @@ export default function WeatherTime({ animationEnabled = true }) {
                 ? <Cloud className="apple-icon cloudy" size={26} />
                 : getIcon(weatherCode, 26)}
               <span className="apple-temp">
-                {weather && weather.temp !== null ? `${Math.round(weather.temp)}°` : "--°"}
+                {formatTemperature(weather?.temp)}
               </span>
             </div>
           )}
