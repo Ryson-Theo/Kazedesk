@@ -55,9 +55,14 @@ describe("landing Pip", () => {
         bottom: rect.top + rect.height,
       };
     });
+    let rangedElement;
     vi.spyOn(document, "createRange").mockReturnValue({
-      selectNodeContents: vi.fn(),
-      getClientRects: () => [new DOMRect(0, 583, 1024, 183)],
+      selectNodeContents: (element) => {
+        rangedElement = element;
+      },
+      getClientRects: () => rangedElement?.classList.contains("hero-title")
+        ? [new DOMRect(94, -29, 275, 70), new DOMRect(94, 24, 231, 70)]
+        : [new DOMRect(0, 583, 1024, 183)],
     });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
@@ -95,15 +100,20 @@ describe("landing Pip", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => callbacks.delete(id));
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function getRect() {
       const className = typeof this.className === "string" ? this.className : "";
-      const rect = className.includes("folder-root")
-        ? { left: 50, top: 250, width: 400, height: 100 }
-        : className.includes("landing-brand-mark")
-          ? { left: 20, top: 20, width: 46, height: 46 }
-        : className.includes("landing-pip-follower")
-          ? { left: 0, top: 0, width: 114, height: 76 }
-          : this.tagName === "P"
-            ? { left: 0, top: 380, width: 700, height: 40 }
-            : { left: 0, top: 0, width: 0, height: 0 };
+      let rect = { left: 0, top: 0, width: 0, height: 0 };
+      if (className.includes("landing-header")) {
+        rect = { left: 317, top: 16, width: 790, height: 62 };
+      } else if (className.includes("landing-brand-mark")) {
+        rect = { left: 330, top: 24, width: 46, height: 46 };
+      } else if (className.includes("folder-root")) {
+        rect = { left: 50, top: 250, width: 400, height: 100 };
+      } else if (className.includes("landing-pip-follower")) {
+        rect = { left: 0, top: 0, width: 114, height: 76 };
+      } else if (this.tagName === "P") {
+        rect = { left: 0, top: 380, width: 700, height: 40 };
+      } else if (className.includes("hero-title")) {
+        rect = { left: 94, top: -29, width: 275, height: 124 };
+      }
       return {
         ...rect,
         right: rect.left + rect.width,
@@ -115,12 +125,13 @@ describe("landing Pip", () => {
 
     const { container } = render(
       <main className="landing-page">
-        <header className="landing-header">
+        <header className="landing-header" style={{ position: "fixed" }}>
           <a className="landing-brand">
             <span className="landing-brand-mark" />
           </a>
         </header>
         <LandingPip />
+        <h1 className="hero-title">Kazedesk</h1>
         <p>Text Pip should fly around</p>
         <div className="features-folder">
           <div className="folder-root" />
@@ -152,7 +163,7 @@ describe("landing Pip", () => {
     fireEvent.pointerMove(window, { clientX: 120, clientY: 160, pointerType: "mouse" });
     expect(bird.dataset.phase).toBe("following");
     expect(bird.dataset.active).toBe("true");
-    expect(bird.style.transform).toContain("translate3d(-14px, 5px, 0)");
+    expect(bird.style.transform).toContain("translate3d(296px, 9px, 0)");
     expect(container.querySelector(".landing-brand-mark").classList.contains("is-pip-flying")).toBe(true);
 
     advanceFrames(300);
@@ -217,6 +228,7 @@ describe("landing Pip", () => {
     advanceFrames(500);
     expect(bird.dataset.phase).toBe("docked");
     expect(bird.dataset.active).toBe("false");
+    expect(bird.style.transform).toContain("translate3d(296px, 9px, 0)");
     expect(container.querySelector(".landing-brand-mark").classList.contains("is-pip-flying")).toBe(false);
   });
 });

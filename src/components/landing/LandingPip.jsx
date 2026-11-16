@@ -303,6 +303,34 @@ function getObstacles(entries, ignoredElement = null) {
     })));
 }
 
+function getReturnBlockerEntries(entries, home, header) {
+  const dockRect = {
+    left: home.x + (BIRD_WIDTH * (1 - HOME_SCALE)) / 2,
+    top: home.y + (BIRD_HEIGHT * (1 - HOME_SCALE)) / 2,
+    right: home.x + (BIRD_WIDTH * (1 + HOME_SCALE)) / 2,
+    bottom: home.y + (BIRD_HEIGHT * (1 + HOME_SCALE)) / 2,
+  };
+  const headerRect = header?.getBoundingClientRect();
+  const headerIsFixed = header
+    && window.getComputedStyle(header).position === "fixed";
+
+  return entries.filter(({ element, rect }) => {
+    const intersectsHeader = rect.left < headerRect?.right
+      && rect.right > headerRect?.left
+      && rect.top < headerRect?.bottom
+      && rect.bottom > headerRect?.top;
+    if (headerIsFixed && (header.contains(element) || intersectsHeader)) return false;
+
+    const expandedRect = {
+      left: rect.left - BIRD_WIDTH - 6,
+      top: rect.top - BIRD_HEIGHT - 6,
+      right: rect.right + 6,
+      bottom: rect.bottom + 6,
+    };
+    return !isInside(home, expandedRect) || overlaps(rect, dockRect);
+  });
+}
+
 function isPathClear(start, end, obstacles, allowExit = false) {
   return !obstacles.some((rect) => (
     !(allowExit && isInside(start, rect))
@@ -498,13 +526,18 @@ export default function LandingPip() {
 
     const returnToHome = () => {
       if (motion.phase !== "annoyed") return;
-      const entries = getBlockerEntries(page);
+      const home = getHomePosition();
+      const entries = getReturnBlockerEntries(
+        getBlockerEntries(page),
+        home,
+        page.querySelector(".landing-header"),
+      );
 
       motion.phase = "returning";
       motion.landing = null;
       motion.dropping = false;
       setPhase("returning");
-      setRoute(getHomePosition(), entries, homeMark?.closest(".landing-brand"));
+      setRoute(home, entries, homeMark?.closest(".landing-brand"));
       requestFrame();
     };
 
