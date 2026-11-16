@@ -89,7 +89,7 @@ export function FeatureGrid({ theme = "dark" }) {
     <section className="features-section" id="features" ref={sectionRef}>
       <TextLoop
         className="features-ribbon"
-        text="FOCUS   ✦  PLAN  ✦  CAPTURE  ✦ ORGANIZE"
+        text="FOCUS ✦ PLAN ✦ CAPTURE ✦ ORGANIZE"
         path="M 1360 -80 C 1290 -25 1260 50 1190 48 C 1120 46 1110 -25 1045 -5 C 975 18 1045 103 980 112 C 900 121 850 60 770 95 C 710 121 715 180 750 220 C 785 260 785 300 760 340 C 735 380 735 420 760 460 C 785 500 820 525 890 535 C 960 545 1070 485 1140 505 C 1210 525 1250 600 1320 625 C 1370 643 1380 710 1430 775"
         speed={90}
         direction="forward"
@@ -98,7 +98,7 @@ export function FeatureGrid({ theme = "dark" }) {
         tilt={0}
         fontSize={18}
         fontWeight={800}
-        letterSpacing={1}
+        letterSpacing={0}
         uppercase
         ribbon
         ribbonColor="#95c482"
